@@ -167,8 +167,9 @@ print(f'Loaded: {data.shape}')
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
 # ---------------------------------------------------------------------------
-print('Removing BLSA 1.5T data...')
+print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
+data = data[data['Study'] != 'BIOCARD']
 
 data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
 data = data[data['Visit_Code'] != 'ADNI Screening']
