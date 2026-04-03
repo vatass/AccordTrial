@@ -21,12 +21,23 @@ os.makedirs(data_dir, exist_ok=True)
 df = pd.read_csv(data_dir + 'data_bag_allstudies.csv', low_memory=False)
 df['PTID'] = df['PTID'].astype(str)
 
-with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
-    norm_stats = pickle.load(f)
+# Denormalize if normalization stats exist, otherwise treat columns as already raw
+try:
+    with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
+        norm_stats = pickle.load(f)
+    df['Age_raw']      = df['Age']      * norm_stats['Age']['std']      + norm_stats['Age']['mean']
+    df['SPARE_BA_raw'] = df['SPARE_BA'] * norm_stats['SPARE_BA']['std'] + norm_stats['SPARE_BA']['mean']
+    df['BAG_raw']      = df['BAG']      * norm_stats['BAG']['std']      + norm_stats['BAG']['mean']
+    print('Normalization stats loaded — values denormalized.')
+except FileNotFoundError:
+    print('normalization_stats.pkl not found — assuming columns are already in raw units.')
+    df['Age_raw']      = df['Age']
+    df['SPARE_BA_raw'] = df['SPARE_BA']
+    df['BAG_raw']      = df['BAG']
 
-df['Age_raw']     = df['Age']     * norm_stats['Age']['std']     + norm_stats['Age']['mean']
-df['SPARE_BA_raw'] = df['SPARE_BA'] * norm_stats['SPARE_BA']['std'] + norm_stats['SPARE_BA']['mean']
-df['BAG_raw']     = df['BAG']     * norm_stats['BAG']['std']     + norm_stats['BAG']['mean']
+# Baseline age: first observed Age per subject (sorted by Time)
+df = df.sort_values(['PTID', 'Time'])
+df['Baseline_Age'] = df.groupby('PTID')['Age_raw'].transform('first')
 
 # Baseline rows only (one row per subject)
 baseline = df[df['Time'] == 0].copy()
@@ -157,15 +168,6 @@ print(f'\nSlope report saved: {slope_path}')
 # ---------------------------------------------------------------------------
 # BAG slope by baseline age group
 # ---------------------------------------------------------------------------
-
-# Assign baseline age to every subject
-baseline_age = (
-    df[df['Time'] == 0][['PTID', 'Age_raw']]
-    .drop_duplicates('PTID')
-    .rename(columns={'Age_raw': 'Baseline_Age'})
-)
-df = df.merge(baseline_age, on='PTID', how='left')
-
 age_bins   = [0,  60,  70,  80,  999]
 age_labels = ['<60', '60–70', '70–80', '≥80']
 df['Age_group'] = pd.cut(df['Baseline_Age'], bins=age_bins, labels=age_labels, right=False)

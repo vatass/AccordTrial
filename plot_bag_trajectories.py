@@ -27,15 +27,24 @@ MIN_TIMEPOINTS  = 3    # minimum visits for a subject to appear in trajectories
 # ---------------------------------------------------------------------------
 # Load data & denormalize BAG
 # ---------------------------------------------------------------------------
-df = pd.read_csv(data_dir + 'data_bag_allstudies.csv', low_memory=False)
+df = pd.read_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', low_memory=False)
 df['PTID'] = df['PTID'].astype(str)
+df = df.sort_values(['PTID', 'Time'])
 
-with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
-    norm_stats = pickle.load(f)
+# Denormalize if normalization stats exist, otherwise treat columns as already raw
+try:
+    with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
+        norm_stats = pickle.load(f)
+    df['BAG_raw'] = df['BAG'] * norm_stats['BAG']['std'] + norm_stats['BAG']['mean']
+    df['Age_raw'] = df['Age'] * norm_stats['Age']['std'] + norm_stats['Age']['mean']
+    print('Normalization stats loaded — values denormalized.')
+except FileNotFoundError:
+    print('normalization_stats.pkl not found — assuming columns are already in raw units.')
+    df['BAG_raw'] = df['BAG']
+    df['Age_raw'] = df['Age']
 
-# Denormalize BAG and Age for interpretable axes
-df['BAG_raw'] = df['BAG'] * norm_stats['BAG']['std'] + norm_stats['BAG']['mean']
-df['Age_raw'] = df['Age'] * norm_stats['Age']['std'] + norm_stats['Age']['mean']
+# Baseline age: first observed Age per subject
+df['Baseline_Age'] = df.groupby('PTID')['Age_raw'].transform('first')
 
 print(f'Loaded {df["PTID"].nunique()} subjects, {len(df)} observations')
 print(f'BAG (raw) — mean: {df["BAG_raw"].mean():.2f}, std: {df["BAG_raw"].std():.2f}')
@@ -192,15 +201,8 @@ plt.close()
 print('Saved: bag_delta_from_baseline')
 
 # ---------------------------------------------------------------------------
-# Age-group setup — baseline age assigned from Time==0 row
+# Age-group setup
 # ---------------------------------------------------------------------------
-baseline_age = (
-    df[df['Time'] == 0][['PTID', 'Age_raw']]
-    .drop_duplicates('PTID')
-    .rename(columns={'Age_raw': 'Baseline_Age'})
-)
-df = df.merge(baseline_age, on='PTID', how='left')
-
 age_bins   = [0,  60,  70,  80,  999]
 age_labels = ['<60', '60–70', '70–80', '≥80']
 age_colors = {'<60': '#2166ac', '60–70': '#4dac26', '70–80': '#d6604d', '≥80': '#762a83'}
