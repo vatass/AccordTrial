@@ -269,6 +269,12 @@ data['Diagnosis_nearest_2.0'].replace(['CN', 'MCI', 'AD', 'unk','other', 'early 
 print(data['Diagnosis_nearest_2.0'].unique())
 print('Initial SUBJECTS::', len(list(data['PTID'].unique())))
 
+# Keep only subjects that are CN (0) at all timepoints
+cn_subjects = data.groupby('PTID')['Diagnosis_nearest_2.0'].apply(lambda x: (x == 0).all())
+cn_subjects = cn_subjects[cn_subjects].index.tolist()
+data = data[data['PTID'].isin(cn_subjects)]
+print('Subjects after keeping CN-only at all timepoints:', len(data['PTID'].unique()))
+
 data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0,1], inplace=True)
 data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0,1], inplace=True)
 data['Diabetes'].replace(['Diabetes negative/absent', 'Diabetes positive/present'], [0,1], inplace=True)
@@ -289,15 +295,19 @@ print('Total subjects after filtering:', len(data['PTID'].unique()))
 
 print('Subjects after removing the single-sampled ones', len(list(data['PTID'].unique())))
 studies_with_multiple_acquisitions = []
+print("\n=== Studies with Multiple Acquisitions ===")
 for study in data['Study'].unique():
     study_data = data[data['Study'] == study]
+    total_subjects = study_data['PTID'].nunique()
     subjects_with_multiple = study_data.groupby('PTID').filter(lambda x: x.shape[0] > 1)
-    if len(subjects_with_multiple) > 0:
+    n_multi = subjects_with_multiple['PTID'].nunique()
+    if n_multi > 0:
         studies_with_multiple_acquisitions.append(study)
-        print(f"Study {study}: {len(subjects_with_multiple['PTID'].unique())} subjects with multiple acquisitions")
-
-
-sys.exit(0)
+        pct = 100 * n_multi / total_subjects
+        print(f"  {study}: {n_multi}/{total_subjects} subjects with multiple acquisitions ({pct:.1f}%)")
+    else:
+        print(f"  {study}: 0/{total_subjects} subjects with multiple acquisitions (0.0%)")
+print(f"Total studies with multiple acquisitions: {len(studies_with_multiple_acquisitions)}")
 
 # Filter data to keep only studies with multiple acquisitions
 data = data[data['Study'].isin(studies_with_multiple_acquisitions)]
@@ -654,6 +664,10 @@ education_years_median = data['Education_Years'].median()
 education_years_std = data['Education_Years'].std()
 print('Edu Years Stats', education_years_median, education_years_std)
 
+# BAG: Brain Age Gap = SPARE_BA - Age (computed on raw/unnormalized values)
+data['BAG'] = data['SPARE_BA'] - data['Age']
+print('BAG column created. Mean BAG:', data['BAG'].mean(), '  STD BAG:', data['BAG'].std())
+
 print('Normalize Age...')
 mean_age, std_age = data['Age'].mean() ,data['Age'].std()
 data['Age'] = data['Age'].apply(lambda x: (x-mean_age)/std_age)
@@ -670,8 +684,7 @@ data['Sex'].replace(['M', 'F'], [0,1], inplace=True)
 
 # Substitute Missing Clinical Features with -1
 # remove SPARE_BA and SPARE_AD when we infer only the imaging rois
-# clinical_features = ['Diagnosis', 'Age', 'Sex', 'APOE4_Alleles', 'Education_Years', 'SPARE_BA', 'SPARE_AD' ,'PTID', 'Delta_Baseline', 'Time']
-clinical_features = ['Diagnosis', 'Age', 'Sex', 'APOE4_Alleles', 'Education_Years', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'PTID', 'Delta_Baseline', 'Time']
 
 mean_spareba, std_spareba = data['SPARE_BA'].mean() ,data['SPARE_BA'].std()
 data['SPARE_BA'] = data['SPARE_BA'].apply(lambda x: (x-mean_spareba)/std_spareba)
@@ -698,30 +711,9 @@ for s in all_subjects:
     # print('Study', subject_data['Study'].unique())
 
 
-"""**LMM Data**"""
-
-print('Store the LMM data')
-print(data.shape)
-# keep in data all the columns that start from Baseline and Time and the H_MUSE columns
-data = data.filter(regex='Baseline*|Time*|H_MUSE*|PTID|Diagnosis_nearest_2.0|Age|Sex|APOE4_Alleles|Education_Years|SPARE_BA|SPARE_AD|Delta_Baseline|Study|MRI_Scanner_Model')
-print(data.shape)
-# then check for the columns that have Nan values
-for c in data.columns:
-    if data[c].isnull().sum() > 0:
-        print(c)
-    
-# cast all the PTID to string
-data['PTID'] = data['PTID'].astype(str)
-
-data.to_csv('LMM_data_allstudies.csv')
-
-print('Total Number of Subjects::', len(list(data['PTID'].unique())))
-
-
 """**Save the pickle files**"""
 import pickle
-# clinical_features = ['Diagnosis', 'Age', 'Sex', 'APOE4_Alleles', 'Education_Years', 'SPARE_BA', 'SPARE_AD', 'PTID', 'Delta_Baseline',  'Time']
-clinical_features = ['Diagnosis_nearest_2.0', 'Age', 'Sex', 'APOE4_Alleles', 'Education_Years', 'PTID', 'Delta_Baseline',  'Time']
+clinical_features = ['Sex', 'PTID', 'Delta_Baseline', 'Time']
 features = [name for name in data.columns if (name.startswith('H_MUSE_Volume') and int(name[14:])<300)]
 features.extend(clinical_features)
 
