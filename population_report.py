@@ -18,7 +18,7 @@ os.makedirs(data_dir, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Load data & denormalize
 # ---------------------------------------------------------------------------
-df = pd.read_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', low_memory=False)
+df = pd.read_csv(data_dir + 'data_bag_allstudies.csv', low_memory=False)
 df['PTID'] = df['PTID'].astype(str)
 
 with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
