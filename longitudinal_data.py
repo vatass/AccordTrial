@@ -336,7 +336,17 @@ features.extend(clinical_features)
 with open(data_dir + 'features_bag.pkl', 'wb') as f:
     pickle.dump(features, f)
 
-target = [name for name in data.columns if name.startswith('H_MUSE_Volume') and int(name[14:]) < 300]
+target = ['BAG']
+
+samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+
+# samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt = create_n_acquisition_temporal_dataset(n=3, subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+
+samples_df = pd.DataFrame(data=samples)
+longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
+longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
+
 
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
