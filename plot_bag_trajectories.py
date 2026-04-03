@@ -27,7 +27,7 @@ MIN_TIMEPOINTS  = 3    # minimum visits for a subject to appear in trajectories
 # ---------------------------------------------------------------------------
 # Load data & denormalize BAG
 # ---------------------------------------------------------------------------
-df = pd.read_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', low_memory=False)
+df = pd.read_csv(data_dir + 'data_bag_allstudies.csv', low_memory=False)
 df['PTID'] = df['PTID'].astype(str)
 
 with open(data_dir + 'normalization_stats.pkl', 'rb') as f:
