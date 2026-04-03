@@ -7,18 +7,155 @@ import sys
 import numpy as np
 import pandas as pd
 import pickle
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from sklearn.model_selection import KFold
 
-# Output directory
-os.makedirs('data', exist_ok=True)
-data_dir = 'data/'
 
-# ---------------------------------------------------------------------------
-# 1. Load Data
-# ---------------------------------------------------------------------------
+def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse, genomic, followup, derivedroi,  visualize=False):
+    '''
+    subjects: list of the subject ids
+    dataframe: dataframe with all the data
+    target: H_MUSE ROI features
+    '''
+    print('Target', target)
+    cnt = 0
+    num_samples = 0
+    list_of_subjects, list_of_subject_ids = [], []
+    data_x, data_y, data_xbase = [], [], []
+
+    samples = {'PTID': [], 'X': [], 'Y': []}
+    covariates = {'PTID': [], 'Age': [], 'BaselineDiagnosis': [], 'BaselineAge': [], 'Sex': [] , 'APOE4_Alleles': [], 'Education_Years': [], 'Status': []}
+
+    longitudinal_covariates = {'PTID': [], 'Time': [], 'Age': [],  'Diagnosis': [], 'Hypertension': [],
+                               'Diabetes': [], 'DLICV': [], 'Study': [], 'Education_Years': [], 'Race': [], 'Sex': [], 'APOE4_Alleles': [], 'SPARE_BA': [], 'SPARE_AD': [], 'MRI_Scanner_Model': [], 
+                               'CDR_Global': [], 'Tau_CSF': [], 'Abeta_CSF': [], 'PTau_CSF': [], 'MMSE_nearest_2.0': [] }
+
+
+    if visualize:
+        vdata = {'target': [], 'class': [], 'time': [], 'id': []}
+        cnt = 0
+
+    # remove the PTID from the features!
+    features.remove('PTID')
+    features.remove('Delta_Baseline')
+    features.remove('Time')
+    # hmuse = [i for i in features if i.startswith('H_MUSE')]
+
+    # print('Features', features)
+    clinical_features = [f for f in features if not f.startswith('H_MUSE')]
+    # print('Clinical Features', clinical_features)
+
+    # target = [t for t in target if t.startswith('H_')]
+    print('Target', len(target))
+    print('Input Features', features)
+
+    for i, subject_id in enumerate(subjects):
+
+        subject = dataframe[dataframe['PTID']==subject_id]
+        subject_unnorm = dataframeunnorm[dataframeunnorm['PTID']==subject_id]
+
+        first_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
+        last_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[-1]
+
+        if first_diagnosis == 0 and last_diagnosis == 0:
+            status = 'Non-Progressor'
+        elif first_diagnosis == 0 and last_diagnosis != 0: 
+            status = 'Progressor'
+        else: 
+            status = 'MCI/Demented Stable'
+
+        # print(subject)
+        for k in range(0, subject.shape[0]):
+            samples['PTID'].append(subject_id)
+            covariates['PTID'].append(subject_id)
+
+            print('Baseline Features',  features)
+
+            x = subject[features].iloc[0].to_list()
+
+            # print(x)
+
+            delta = subject['Time'].iloc[k]
+            # man_device = subject['MRI_Scanner_Model'].iloc[k]
+            diagnosis = subject['Diagnosis_nearest_2.0'].iloc[k]
+            baseline_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
+            baseline_age = subject_unnorm['Age'].iloc[0]
+            age = subject_unnorm['Age'].iloc[k]
+            dlicv = subject_unnorm['DLICV'].iloc[k]
+            study = subject_unnorm['Study'].iloc[k]
+            edu_years = subject['Education_Years'].iloc[k]
+            race = subject_unnorm['Race'].iloc[k]
+            sex = subject['Sex'].iloc[k]
+            apoe4 = subject['APOE4_Alleles'].iloc[k]
+            hypertension = subject_unnorm['Hypertension'].iloc[k]
+            diabetes = subject_unnorm['Diabetes'].iloc[k]
+            spba = subject_unnorm['SPARE_BA'].iloc[k]
+            spad = subject_unnorm['SPARE_AD'].iloc[k]
+            scanner = subject_unnorm['MRI_Scanner_Model'].iloc[k]
+            cdr_global = subject_unnorm['CDR_Global'].iloc[k]
+            tau_csf = subject_unnorm['Tau_CSF'].iloc[k]
+            abeta_csf = subject_unnorm['Abeta_CSF'].iloc[k]
+            ptau_csf = subject_unnorm['PTau_CSF'].iloc[k]
+            mmse = subject_unnorm['MMSE_nearest_2.0'].iloc[k]
+
+            # print('Delta', delta)
+            x.extend([delta])
+
+            # print('Input', x)
+            # print('Target', target)
+            t = subject[target].iloc[k] #.to_list()
+
+            print('Target', t)
+            # covariates['MRI_Scanner_Model'].append(man_device)
+            covariates['Age'].append(age)
+            covariates['BaselineDiagnosis'].append(baseline_diagnosis)
+            covariates['BaselineAge'].append(baseline_age)
+            covariates['Sex'].append(sex) 
+            covariates['APOE4_Alleles'].append(apoe4)
+            covariates['Education_Years'].append(edu_years) 
+            covariates['Status'].append(status)
+                                                 
+            longitudinal_covariates['PTID'].append(subject_id)
+            longitudinal_covariates['Time'].append(delta)
+            longitudinal_covariates['Age'].append(age)
+            longitudinal_covariates['Diagnosis'].append(diagnosis)
+            longitudinal_covariates['DLICV'].append(dlicv)
+            longitudinal_covariates['Study'].append(study)
+            longitudinal_covariates['Education_Years'].append(edu_years)
+            longitudinal_covariates['Race'].append(race)
+            longitudinal_covariates['Sex'].append(sex)
+            longitudinal_covariates['APOE4_Alleles'].append(apoe4)
+            longitudinal_covariates['Hypertension'].append(hypertension)
+            longitudinal_covariates['Diabetes'].append(diabetes)
+            longitudinal_covariates['SPARE_BA'].append(spba)
+            longitudinal_covariates['SPARE_AD'].append(spba)
+            longitudinal_covariates['MRI_Scanner_Model'].append(scanner)
+            longitudinal_covariates['CDR_Global'].append(cdr_global)
+            longitudinal_covariates['Tau_CSF'].append(tau_csf)
+            longitudinal_covariates['PTau_CSF'].append(ptau_csf)
+            longitudinal_covariates['Abeta_CSF'].append(abeta_csf)
+            longitudinal_covariates['MMSE_nearest_2.0'].append(mmse)
+
+            samples['X'].append(x)
+            samples['Y'].append(t.tolist())
+
+            data_x.append(x)
+            data_y.append(t)
+
+        subject_data = list(zip(data_x, data_y))
+        num_samples +=len(subject_data)
+        list_of_subjects.append(subject_data)
+        list_of_subject_ids.append(subject_id)
+
+    assert len(samples['PTID']) == len(samples['X'])
+    assert len(samples['X']) == len(samples['Y'])
+
+    return samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covariates, longitudinal_covariates
+
+"""**Data Selection**
+1. Read Data and remove all ADNI Screening and BLSA 1.5 T
+2. Drop all NaN MUSE
+3. Map the Diagnosis Column
+
+"""
 data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
 
 print(f'Loaded: {data.shape}')
