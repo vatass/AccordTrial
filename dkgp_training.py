@@ -15,12 +15,13 @@ import json
 import time
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-parser = argparse.ArgumentParser(description='Temporal Deep Kernel Single Task GP model for a single HMUSE Roi')
+parser = argparse.ArgumentParser(description='Temporal Deep Kernel Single Task GP model for a Biomarker')
 ## Production Parameters 
 parser.add_argument("--data_file", help="Path to the data CSV file", required=True)
 parser.add_argument("--train_ids_file", help="Path to the train IDs pickle file", required=True)
 parser.add_argument("--test_ids_file", help="Path to the test IDs pickle file", required=True)
-parser.add_argument("--roi_idx", help="ROI index to train on", type=int, required=True)
+parser.add_argument("--biomarker_index", help="biomarker index to train on", type=int, required=True)
+parser.add_argument("--biomarker_name", help="Biomarker name", type=str, required=True)
 parser.add_argument("--output_dir", help="Directory to save model outputs", default="./models")
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
 
@@ -29,7 +30,7 @@ args = parser.parse_args()
 
 # Parse arguments
 gpu_id = args.gpu_id
-roi_idx = args.roi_idx
+biomarker_index = args.biomarker_index
 data_file = args.data_file
 train_ids_file = args.train_ids_file
 test_ids_file = args.test_ids_file
@@ -101,12 +102,10 @@ print(f"Number of features in training data: {train_x.shape[1]}")
 print("=== END VERIFICATION ===\n")
 
 # Select ROI
-test_y = test_y[:, roi_idx]
-train_y = train_y[:, roi_idx]
+test_y = test_y[:, biomarker_index]
+train_y = train_y[:, biomarker_index]
 train_y = train_y.squeeze() 
 test_y = test_y.squeeze()
-
-
 
 # Define model with fixed architecture
 depth = [(train_x.shape[1], int(train_x.shape[1]/2))]
@@ -194,12 +193,12 @@ print(f"Coverage: {np.mean(coverage):.4f}")
 print(f"Interval Width: {mean_interval_width:.4f}")
 
 # Save model
-model_filename = os.path.join(output_dir, f'population_deep_kernel_gp_{roi_idx}.pth')
+model_filename = os.path.join(output_dir, f'deep_kernel_gp_{biomarker_index}.pth')
 save_model(deepkernelmodel, optimizer, likelihood, filename=model_filename, train_x=train_x, train_y=train_y)
 
 # Save results
 results = {
-    'roi_idx': int(roi_idx),
+    'biomarker_idx': int(biomarker_index),
     'mae': float(mae_pop),
     'mse': float(mse_pop),
     'rmse': float(rmse_pop),
@@ -209,7 +208,7 @@ results = {
     'training_time': float(time.time() - t0)
 }
 
-results_filename = os.path.join(output_dir, f'results_roi_{roi_idx}.json')
+results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_index}.json')
 with open(results_filename, 'w') as f:
     json.dump(results, f, indent=2)
 
