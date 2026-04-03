@@ -302,16 +302,31 @@ data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 10. Normalize / encode clinical variables
+# 10. Normalize / encode clinical variables  (save all stats for later use)
 # ---------------------------------------------------------------------------
-mean_age, std_age = data['Age'].mean(), data['Age'].std()
-data['Age'] = (data['Age'] - mean_age) / std_age
+mean_age,     std_age     = data['Age'].mean(),     data['Age'].std()
+mean_spareba, std_spareba = data['SPARE_BA'].mean(), data['SPARE_BA'].std()
+mean_bag,     std_bag     = data['BAG'].mean(),      data['BAG'].std()
+
+data['Age']     = (data['Age']     - mean_age)     / std_age
+data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
+data['BAG']     = (data['BAG']     - mean_bag)     / std_bag
 
 data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
-mean_spareba, std_spareba = data['SPARE_BA'].mean(), data['SPARE_BA'].std()
-data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
+# Persist normalization statistics for downstream scripts
+normalization_stats = {
+    'Age':      {'mean': mean_age,     'std': std_age},
+    'SPARE_BA': {'mean': mean_spareba, 'std': std_spareba},
+    'BAG':      {'mean': mean_bag,     'std': std_bag},
+}
+with open(data_dir + 'normalization_stats.pkl', 'wb') as f:
+    pickle.dump(normalization_stats, f)
+print('Normalization stats saved.')
+print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
+print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
+print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
 clinical_features = ['Sex', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
