@@ -153,3 +153,57 @@ slope_df = pd.DataFrame(slope_rows).set_index('Study')
 slope_path = data_dir + 'bag_slope_report.csv'
 slope_df.to_csv(slope_path)
 print(f'\nSlope report saved: {slope_path}')
+
+# ---------------------------------------------------------------------------
+# BAG slope by baseline age group
+# ---------------------------------------------------------------------------
+
+# Assign baseline age to every subject
+baseline_age = (
+    df[df['Time'] == 0][['PTID', 'Age_raw']]
+    .drop_duplicates('PTID')
+    .rename(columns={'Age_raw': 'Baseline_Age'})
+)
+df = df.merge(baseline_age, on='PTID', how='left')
+
+age_bins   = [0,  60,  70,  80,  999]
+age_labels = ['<60', '60–70', '70–80', '≥80']
+df['Age_group'] = pd.cut(df['Baseline_Age'], bins=age_bins, labels=age_labels, right=False)
+
+# Compute per-subject linear BAG slope
+subject_slopes = []
+for ptid, grp in df.groupby('PTID'):
+    grp = grp.sort_values('Time')
+    if len(grp) < 2 or grp['Time'].std() == 0:
+        continue
+    slope = np.polyfit(grp['Time'].values.astype(float), grp['BAG_raw'].values, 1)[0]
+    subject_slopes.append({
+        'PTID':         ptid,
+        'slope_yr_yr':  slope * 12,
+        'Age_group':    grp['Age_group'].iloc[0],
+        'Baseline_Age': grp['Baseline_Age'].iloc[0],
+    })
+slopes_df = pd.DataFrame(subject_slopes)
+
+print('\n--- BAG Slope by Baseline Age Group ---')
+age_group_rows = []
+for ag in age_labels:
+    grp = slopes_df[slopes_df['Age_group'] == ag]['slope_yr_yr'].dropna()
+    baseline_grp = df[df['Age_group'] == ag].drop_duplicates('PTID')
+    row = {
+        'Age_group':                   ag,
+        'N subjects':                  len(grp),
+        'Baseline Age (mean±std)':     mean_std(baseline_grp['Age_raw']),
+        'Baseline BAG (mean±std)':     mean_std(baseline_grp['BAG_raw']),
+        'BAG slope yr/yr (mean±std)':  f'{grp.mean():.4f} ± {grp.std():.4f}',
+        'BAG slope yr/yr (median)':    f'{grp.median():.4f}',
+        'BAG slope yr/yr (min–max)':   f'{grp.min():.4f}–{grp.max():.4f}',
+    }
+    age_group_rows.append(row)
+    print(f'  {ag}: slope={grp.mean():.4f} ± {grp.std():.4f} yr/yr  (n={len(grp)}, '
+          f'baseline age={baseline_grp["Age_raw"].mean():.1f}±{baseline_grp["Age_raw"].std():.1f})')
+
+age_group_df = pd.DataFrame(age_group_rows).set_index('Age_group')
+age_group_path = data_dir + 'bag_slope_by_age_group.csv'
+age_group_df.to_csv(age_group_path)
+print(f'\nAge-group slope report saved: {age_group_path}')

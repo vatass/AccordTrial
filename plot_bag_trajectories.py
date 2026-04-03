@@ -191,4 +191,139 @@ plt.savefig(out_dir + 'bag_delta_from_baseline.png', dpi=150, bbox_inches='tight
 plt.close()
 print('Saved: bag_delta_from_baseline')
 
+# ---------------------------------------------------------------------------
+# Age-group setup — baseline age assigned from Time==0 row
+# ---------------------------------------------------------------------------
+baseline_age = (
+    df[df['Time'] == 0][['PTID', 'Age_raw']]
+    .drop_duplicates('PTID')
+    .rename(columns={'Age_raw': 'Baseline_Age'})
+)
+df = df.merge(baseline_age, on='PTID', how='left')
+
+age_bins   = [0,  60,  70,  80,  999]
+age_labels = ['<60', '60–70', '70–80', '≥80']
+age_colors = {'<60': '#2166ac', '60–70': '#4dac26', '70–80': '#d6604d', '≥80': '#762a83'}
+
+df['Age_group'] = pd.cut(df['Baseline_Age'], bins=age_bins, labels=age_labels, right=False)
+
+# Per-subject linear BAG slope (yr / month)
+def compute_slopes(data):
+    rows = []
+    for ptid, grp in data.groupby('PTID'):
+        grp = grp.sort_values('Time')
+        if len(grp) < 2 or grp['Time'].std() == 0:
+            continue
+        slope = np.polyfit(grp['Time'].values.astype(float), grp['BAG_raw'].values, 1)[0]
+        rows.append({
+            'PTID':         ptid,
+            'slope_yr_mo':  slope,
+            'slope_yr_yr':  slope * 12,
+            'Age_group':    grp['Age_group'].iloc[0],
+            'Baseline_Age': grp['Baseline_Age'].iloc[0],
+            'Study':        grp['Study'].iloc[0],
+        })
+    return pd.DataFrame(rows)
+
+slopes_df = compute_slopes(df)
+print(f'\nComputed BAG slopes for {len(slopes_df)} subjects')
+
+# ---------------------------------------------------------------------------
+# Figure 5 — Mean ± SD BAG trajectory by age group
+# ---------------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(11, 6))
+for ag in age_labels:
+    sdf = df[df['Age_group'] == ag]
+    grouped = sdf.groupby('Time_year')['BAG_raw'].agg(['mean', 'std', 'count']).reset_index()
+    grouped = grouped[grouped['count'] >= 5]
+    if grouped.empty:
+        continue
+    color = age_colors[ag]
+    n = sdf['PTID'].nunique()
+    ax.plot(grouped['Time_year'], grouped['mean'], color=color, label=f'{ag} (n={n})', linewidth=2)
+    ax.fill_between(grouped['Time_year'],
+                    grouped['mean'] - grouped['std'],
+                    grouped['mean'] + grouped['std'],
+                    color=color, alpha=0.15)
+
+ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
+ax.set_xlabel('Time from Baseline (months)', fontsize=13)
+ax.set_ylabel('BAG (years)', fontsize=13)
+ax.set_title('Mean ± SD BAG Trajectory by Baseline Age Group — CN subjects', fontsize=13)
+ax.legend(title='Age group', fontsize=10, title_fontsize=10)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+plt.tight_layout()
+plt.savefig(out_dir + 'bag_trajectory_by_age_group.svg', bbox_inches='tight')
+plt.savefig(out_dir + 'bag_trajectory_by_age_group.png', dpi=150, bbox_inches='tight')
+plt.close()
+print('Saved: bag_trajectory_by_age_group')
+
+# ---------------------------------------------------------------------------
+# Figure 6 — Spaghetti by age group (random sample per group)
+# ---------------------------------------------------------------------------
+N_PER_GROUP = 30
+fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharex=True, sharey=True)
+axes = axes.flatten()
+
+for idx, ag in enumerate(age_labels):
+    ax = axes[idx]
+    group_ids = df[df['Age_group'] == ag]['PTID'].unique()
+    eligible_ids = [p for p in group_ids if df[df['PTID'] == p]['Time'].count() >= MIN_TIMEPOINTS]
+    sample = rng.choice(eligible_ids, size=min(N_PER_GROUP, len(eligible_ids)), replace=False)
+    color = age_colors[ag]
+    for ptid in sample:
+        sub = df[df['PTID'] == ptid].sort_values('Time')
+        ax.plot(sub['Time'], sub['BAG_raw'], color=color, alpha=0.4, linewidth=0.9)
+    ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
+    ax.set_title(f'Baseline Age {ag} (n={len(group_ids)})', fontsize=12)
+    ax.set_xlabel('Time from Baseline (months)', fontsize=10)
+    ax.set_ylabel('BAG (years)', fontsize=10)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+plt.suptitle('Individual BAG Trajectories by Baseline Age Group — CN subjects', fontsize=13, y=1.01)
+plt.tight_layout()
+plt.savefig(out_dir + 'bag_spaghetti_by_age_group.svg', bbox_inches='tight')
+plt.savefig(out_dir + 'bag_spaghetti_by_age_group.png', dpi=150, bbox_inches='tight')
+plt.close()
+print('Saved: bag_spaghetti_by_age_group')
+
+# ---------------------------------------------------------------------------
+# Figure 7 — Boxplot of individual BAG slopes by age group
+# ---------------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(9, 6))
+data_to_plot = [slopes_df[slopes_df['Age_group'] == ag]['slope_yr_yr'].dropna().values
+                for ag in age_labels]
+bp = ax.boxplot(data_to_plot, labels=age_labels, patch_artist=True,
+                medianprops=dict(color='black', linewidth=2),
+                flierprops=dict(marker='o', markersize=3, alpha=0.4))
+
+for patch, ag in zip(bp['boxes'], age_labels):
+    patch.set_facecolor(age_colors[ag])
+    patch.set_alpha(0.7)
+
+ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.6)
+ax.set_xlabel('Baseline Age Group', fontsize=13)
+ax.set_ylabel('BAG Slope (years / year)', fontsize=13)
+ax.set_title('Individual BAG Slopes by Baseline Age Group — CN subjects', fontsize=13)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+# Annotate with n and mean
+for i, ag in enumerate(age_labels):
+    grp = slopes_df[slopes_df['Age_group'] == ag]['slope_yr_yr'].dropna()
+    ax.text(i + 1, ax.get_ylim()[0], f'n={len(grp)}\n{grp.mean():.3f}±{grp.std():.3f}',
+            ha='center', va='bottom', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(out_dir + 'bag_slopes_boxplot_by_age_group.svg', bbox_inches='tight')
+plt.savefig(out_dir + 'bag_slopes_boxplot_by_age_group.png', dpi=150, bbox_inches='tight')
+plt.close()
+print('Saved: bag_slopes_boxplot_by_age_group')
+
+# Save slopes table
+slopes_df.to_csv(out_dir + 'individual_bag_slopes_by_age_group.csv', index=False)
+print('Saved: individual_bag_slopes_by_age_group.csv')
+
 print(f'\nAll plots saved to {out_dir}')
