@@ -31,7 +31,8 @@ for FOLD in 0 1 2 3 4; do
         --biomarker_index ${BIOMARKER_INDEX} \
         --biomarker_name "${BIOMARKER_NAME}" \
         --output_dir "${OUTPUT_DIR}" \
-        --gpu_id ${GPU_ID}
+        --gpu_id ${GPU_ID} \ 
+        --fold ${FOLD}
 
     echo ""
     echo "Fold ${FOLD} complete."

@@ -24,6 +24,9 @@ parser.add_argument("--biomarker_index", help="biomarker index to train on", typ
 parser.add_argument("--biomarker_name", help="Biomarker name", type=str, required=True)
 parser.add_argument("--output_dir", help="Directory to save model outputs", default="./models")
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
+parser.add_argument("--fold", help="fold", type=int, default=0)
+
+
 
 t0 = time.time()
 args = parser.parse_args()
@@ -31,7 +34,9 @@ args = parser.parse_args()
 # Parse arguments
 gpu_id = args.gpu_id
 biomarker_index = args.biomarker_index
+biomarker_name = args.biomarker_index
 data_file = args.data_file
+fold = args.fold
 train_ids_file = args.train_ids_file
 test_ids_file = args.test_ids_file
 output_dir = args.output_dir
@@ -145,7 +150,7 @@ optimizer = torch.optim.Adam([
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
-iterations = 200
+iterations = 1000
 print(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()
@@ -184,7 +189,7 @@ coverage, interval_width, mean_coverage, mean_interval_width = calc_coverage(
 
 coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy() 
 
-print(f"\nResults for ROI {roi_idx}:")
+print(f"\nResults for Biomarker {biomarker_name}:")
 print(f"MAE: {mae_pop:.4f}")
 print(f"MSE: {mse_pop:.4f}")
 print(f"RMSE: {rmse_pop:.4f}")
@@ -193,12 +198,11 @@ print(f"Coverage: {np.mean(coverage):.4f}")
 print(f"Interval Width: {mean_interval_width:.4f}")
 
 # Save model
-model_filename = os.path.join(output_dir, f'deep_kernel_gp_{biomarker_index}.pth')
+model_filename = os.path.join(output_dir, f'deep_kernel_gp_{biomarker_name}_{biomarker_index}_{fold}.pth')
 save_model(deepkernelmodel, optimizer, likelihood, filename=model_filename, train_x=train_x, train_y=train_y)
 
 # Save results
 results = {
-    'biomarker_idx': int(biomarker_index),
     'mae': float(mae_pop),
     'mse': float(mse_pop),
     'rmse': float(rmse_pop),
@@ -208,7 +212,7 @@ results = {
     'training_time': float(time.time() - t0)
 }
 
-results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_index}.json')
+results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}_{biomarker_index}_{fold}.json')
 with open(results_filename, 'w') as f:
     json.dump(results, f, indent=2)
 
