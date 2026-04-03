@@ -711,26 +711,6 @@ for s in all_subjects:
     # print('Study', subject_data['Study'].unique())
 
 
-"""**LMM Data**"""
-
-print('Store the LMM data')
-print(data.shape)
-# keep in data all the columns that start from Baseline and Time and the H_MUSE columns
-data = data.filter(regex='Baseline*|Time*|H_MUSE*|PTID|Diagnosis_nearest_2.0|Age|Sex|APOE4_Alleles|Education_Years|SPARE_BA|SPARE_AD|BAG|Delta_Baseline|Study|MRI_Scanner_Model')
-print(data.shape)
-# then check for the columns that have Nan values
-for c in data.columns:
-    if data[c].isnull().sum() > 0:
-        print(c)
-    
-# cast all the PTID to string
-data['PTID'] = data['PTID'].astype(str)
-
-data.to_csv('LMM_data_allstudies.csv')
-
-print('Total Number of Subjects::', len(list(data['PTID'].unique())))
-
-
 """**Save the pickle files**"""
 import pickle
 clinical_features = ['Sex', 'PTID', 'Delta_Baseline', 'Time']
