@@ -333,7 +333,7 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'Age', 'SPARE_BA ', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -346,7 +346,7 @@ print(f'Total subjects: {len(all_subjects)}')
 data['PTID'] = data['PTID'].astype(str)
 data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
 print(f'Saved: {data_dir}data_bag_allstudies.csv')
-
+s
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
@@ -364,7 +364,7 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
-longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+# longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 sys.exit(0)
 
