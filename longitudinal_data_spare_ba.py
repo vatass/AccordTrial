@@ -1,5 +1,6 @@
 '''
 ACCORD - CN Digital Twin - DKGP
+Data for Predicting SPARE-BA trajectories.
 '''
 
 import os
