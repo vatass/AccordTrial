@@ -333,7 +333,7 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'Age', 'SPARE_BA ', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -346,22 +346,17 @@ print(f'Total subjects: {len(all_subjects)}')
 data['PTID'] = data['PTID'].astype(str)
 data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
 print(f'Saved: {data_dir}data_bag_allstudies.csv')
-<<<<<<< Updated upstream
-=======
-
-sys.exit(0)
->>>>>>> Stashed changes
-
+s
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
 features = [name for name in data.columns if name.startswith('H_MUSE_Volume') and int(name[14:]) < 300]
 features.extend(clinical_features)
 
-with open(data_dir + 'features_spare_ba.pkl', 'wb') as f:
+with open(data_dir + 'features_bag.pkl', 'wb') as f:
     pickle.dump(features, f)
 
-target = ['SPARE_BA']
+target = ['BAG']
 
 samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
 
@@ -370,8 +365,8 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
 # longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
-samples_df.to_csv(data_dir + 'subjectsamples_spare_ba_'+'allstudies'+'.csv')
-
+samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
+sys.exit(0)
 
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
