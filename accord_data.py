@@ -55,7 +55,7 @@ data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
 # Remove duplicate Time entries per subject (keep first occurrence)
-data = data.groupby(['PTID.x', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
+data = data.drop_duplicates(subset=['PTID.x', 'Time'], keep='first')
 print(f'Subjects after time deduplication: {data["PTID.x"].nunique()}')
 print(f'Total acquisitions: {data.shape[0]}')
 
