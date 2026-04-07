@@ -44,11 +44,20 @@ data = data.dropna(axis=0, subset=hmuse_cols)
 print(f'After H_MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
-# 3. Keep only the first (earliest) acquisition per subject
+# 3. Sort and compute Time (months from first acquisition per subject)
 # ---------------------------------------------------------------------------
 data = data.sort_values(by=['PTID.x', 'Date.x'])
-data = data.groupby('PTID.x', as_index=False).first()
-print(f'After keeping first acquisition only: {data["PTID.x"].nunique()} subjects')
+
+# Delta_Baseline: days since each subject's first scan
+data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x - x.iloc[0]).dt.days)
+
+# Time in months (ceiling division, matching longitudinal_data.py)
+data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
+
+# Remove duplicate Time entries per subject (keep first occurrence)
+data = data.groupby(['PTID.x', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
+print(f'Subjects after time deduplication: {data["PTID.x"].nunique()}')
+print(f'Total acquisitions: {data.shape[0]}')
 
 # ---------------------------------------------------------------------------
 # 4. Compute BAG = SPARE_BA - Age  (before normalization)
@@ -109,7 +118,7 @@ os.makedirs(data_dir, exist_ok=True)
 
 
 muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
-keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x']
+keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
 keep_cols = [c for c in keep_cols if c in data.columns]
 data = data[keep_cols]
 print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
@@ -120,4 +129,4 @@ data['PTID.x'] = data['PTID.x'].astype(str)
 output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
-print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
+print(f'Final shape: {data.shape}  ({data["PTID.x"].nunique()} subjects)')
