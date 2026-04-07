@@ -19,14 +19,13 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 # 1. Load ACCORD data
 # ---------------------------------------------------------------------------
-data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+data = pd.read_csv('ACCORD_MARCH.csv')
 
-data = data[data['Study']=='ACCORD']
 
 print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
 
-print(data['H_MUSE_Volume_4'].describe())
+print(data['X4'].describe())
 
 sys.exit(0)
 # ---------------------------------------------------------------------------

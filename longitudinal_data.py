@@ -41,7 +41,7 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     # hmuse = [i for i in features if i.startswith('H_MUSE')]
 
     # print('Features', features)
-    clinical_features = [f for f in features if not f.startswith('H_MUSE')]
+    clinical_features = [f for f in features if not f.startswith('MUSE')]
     # print('Clinical Features', clinical_features)
 
     # target = [t for t in target if t.startswith('H_')]
@@ -185,9 +185,9 @@ data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == '
 data['Date'] = data['Date'].astype('datetime64[ns]')
 
 # Drop rows missing all H_MUSE ROIs
-hmuse = list(data.filter(regex='H_MUSE*'))
+hmuse = list(data.filter(regex=r'^MUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
-print(f'After H_MUSE NaN removal: {data["PTID"].nunique()} subjects')
+print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Map Diagnosis
@@ -276,11 +276,11 @@ data_unnorm = data.copy()
 # ---------------------------------------------------------------------------
 # 7. Z-score MUSE ROIs
 # ---------------------------------------------------------------------------
-subjects_df_hmuse = data.filter(regex='H_MUSE*')
+subjects_df_hmuse = data.filter(regex=r'^MUSE_')
 mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
 std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
-with open(data_dir + '145_harmonized_allstudies_mean_std_hmuse.pkl', 'wb') as f:
+with open(data_dir + '145_MUSE_allstudies_mean_std_hmuse.pkl', 'wb') as f:
     pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
 
 for i, c in enumerate(subjects_df_hmuse.columns):
@@ -291,7 +291,7 @@ for i, c in enumerate(subjects_df_hmuse.columns):
 # ---------------------------------------------------------------------------
 data['Baseline_Age'] = data.groupby('PTID')['Age'].transform('min')
 
-for col in [c for c in data.columns if c.startswith('H_MUSE_')]:
+for col in [c for c in data.columns if c.startswith('MUSE_')]:
     data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
 
 for col in ['SPARE_AD', 'SPARE_BA', 'Diagnosis_nearest_2.0']:
@@ -350,7 +350,7 @@ print(f'Saved: {data_dir}data_bag_allstudies.csv')
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
-features = [name for name in data.columns if name.startswith('H_MUSE_Volume') and int(name[14:]) < 300]
+features = [name for name in data.columns if name.startswith('MUSE_Volume') and int(name[12:]) < 300]
 features.extend(clinical_features)
 
 with open(data_dir + 'features_bag.pkl', 'wb') as f:

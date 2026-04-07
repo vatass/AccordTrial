@@ -277,26 +277,15 @@ data_unnorm = data.copy()
 # ---------------------------------------------------------------------------
 # 7. Z-score MUSE ROIs
 # ---------------------------------------------------------------------------
-subjects_df_hmuse = data.filter(regex='H_MUSE*')
+subjects_df_hmuse = data.filter(regex=r'^MUSE_')
 mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
 std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
-with open(data_dir + '145_harmonized_allstudies_mean_std_hmuse.pkl', 'wb') as f:
+with open(data_dir + '145_MUSE_allstudies_mean_std.pkl', 'wb') as f:
     pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
 
 for i, c in enumerate(subjects_df_hmuse.columns):
     data[c] = (subjects_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
-
-# ---------------------------------------------------------------------------
-# 8. Baseline columns
-# ---------------------------------------------------------------------------
-data['Baseline_Age'] = data.groupby('PTID')['Age'].transform('min')
-
-for col in [c for c in data.columns if c.startswith('H_MUSE_')]:
-    data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
-
-for col in ['SPARE_AD', 'SPARE_BA', 'Diagnosis_nearest_2.0']:
-    data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
 
 # Keep only non-negative timepoints
 data = data[data['Time'] >= 0]
@@ -334,7 +323,11 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex', 'Age', 'SPARE_BA ', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
+
+for c in data.columns: 
+    print(c)
+
+clinical_features = ['Sex', 'Age', 'SPARE_BA', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -345,19 +338,22 @@ all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
 data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}data_bag_allstudies.csv')
-s
+data.to_csv(data_dir + 'data_spare_ba_allstudies.csv', index=False)
+print(f'Saved: {data_dir}data_spare_ba_allstudies.csv')
+
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
-features = [name for name in data.columns if name.startswith('H_MUSE_Volume') and int(name[14:]) < 300]
+features = [name for name in data.columns if name.startswith('MUSE_Volume') and int(name[12:]) < 300]
 features.extend(clinical_features)
 
-with open(data_dir + 'features_bag.pkl', 'wb') as f:
+print(features)
+
+
+with open(data_dir + 'features_spare_ba.pkl', 'wb') as f:
     pickle.dump(features, f)
 
-target = ['BAG']
+target = ['SPARE_BA']
 
 samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
 
@@ -366,7 +362,7 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
 # longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
-samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
+samples_df.to_csv(data_dir + 'subjectsamples_spare_ba_'+'allstudies'+'.csv')
 sys.exit(0)
 
 # ---------------------------------------------------------------------------
