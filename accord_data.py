@@ -26,7 +26,9 @@ print(f'Loaded: {data.shape}')
 
 print(data['X4'].describe())
 
-# TODO: Rename all the X4 - X207 to MUSE_Volume_4 - MUSE_Volume_207
+rename_map = {f'X{i}': f'MUSE_Volume_{i}' for i in range(4, 208) if f'X{i}' in data.columns}
+data = data.rename(columns=rename_map)
+print(f'Renamed {len(rename_map)} columns (X4–X207 → MUSE_Volume_4–MUSE_Volume_207)')
 
 # ---------------------------------------------------------------------------
 # 2. Basic cleanup
@@ -105,7 +107,11 @@ if data['Education_Years'].dtype != int:
 os.makedirs(data_dir, exist_ok=True)
 
 
-# TODO: Keep only the MUSE_Volume_*, Sex, Age, BAG,  Time, PTID 
+muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
+keep_cols = muse_cols + ['Sex', 'Age', 'BAG', 'Time', 'PTID']
+keep_cols = [c for c in keep_cols if c in data.columns]
+data = data[keep_cols]
+print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
 
 
 data['PTID'] = data['PTID'].astype(str)
