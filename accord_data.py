@@ -21,13 +21,13 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 data = pd.read_csv('ACCORD_MARCH.csv')
 
-
 print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
 
 print(data['X4'].describe())
 
-sys.exit(0)
+# TODO: Rename all the X4 - X207 to MUSE_Volume_4 - MUSE_Volume_207
+
 # ---------------------------------------------------------------------------
 # 2. Basic cleanup
 # ---------------------------------------------------------------------------
@@ -54,9 +54,9 @@ data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 5. Normalize H_MUSE volumes using pre-computed training stats
+# 5. Normalize MUSE volumes using pre-computed training stats
 # ---------------------------------------------------------------------------
-hmuse_stats_path = os.path.join(data_dir, '145_harmonized_allstudies_mean_std_hmuse.pkl')
+hmuse_stats_path = os.path.join(data_dir, '145_MUSE_allstudies_mean_std_hmuse.pkl')
 print(f'Loading H_MUSE normalization stats from: {hmuse_stats_path}')
 with open(hmuse_stats_path, 'rb') as f:
     hmuse_stats = pickle.load(f)
@@ -65,11 +65,11 @@ mean_hmuse = hmuse_stats['mean']
 std_hmuse = hmuse_stats['std']
 
 # The stats were saved in the column order of training data; use the same cols
-hmuse_df = data.filter(regex='H_MUSE*')
+hmuse_df = data.filter(regex=r'^MUSE_')
 for i, col in enumerate(hmuse_df.columns):
     data[col] = (data[col] - mean_hmuse[i]) / std_hmuse[i]
 
-print(f'H_MUSE volumes normalized ({len(hmuse_df.columns)} ROIs)')
+print(f'MUSE volumes normalized ({len(hmuse_df.columns)} ROIs)')
 
 # ---------------------------------------------------------------------------
 # 6. Normalize Age and BAG using pre-computed training stats
@@ -103,6 +103,10 @@ if data['Education_Years'].dtype != int:
 # 8. Save processed ACCORD data
 # ---------------------------------------------------------------------------
 os.makedirs(data_dir, exist_ok=True)
+
+
+# TODO: Keep only the MUSE_Volume_*, Sex, Age, BAG,  Time, PTID 
+
 
 data['PTID'] = data['PTID'].astype(str)
 output_path = os.path.join(data_dir, 'accord_data_processed.csv')
