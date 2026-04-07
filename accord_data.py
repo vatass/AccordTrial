@@ -21,7 +21,8 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 data = pd.read_csv('ACCORD_MARCH.csv')
 
-print('Subjects', data['PTID'].nunique())
+
+print('Subjects', data['PTID.x'].nunique())
 print(f'Loaded: {data.shape}')
 
 print(data['X4'].describe())
@@ -33,26 +34,26 @@ print(f'Renamed {len(rename_map)} columns (X4–X207 → MUSE_Volume_4–MUSE_Vo
 # ---------------------------------------------------------------------------
 # 2. Basic cleanup
 # ---------------------------------------------------------------------------
-data = data.drop_duplicates(subset=['PTID', 'Date'], keep='first')
+data = data.drop_duplicates(subset=['PTID.x', 'Date.x'], keep='first')
 
-data['Date'] = pd.to_datetime(data['Date'])
+data['Date.x'] = pd.to_datetime(data['Date.x'])
 
 # Drop rows missing all H_MUSE ROIs
 hmuse_cols = list(data.filter(regex='H_MUSE*').columns)
 data = data.dropna(axis=0, subset=hmuse_cols)
-print(f'After H_MUSE NaN removal: {data["PTID"].nunique()} subjects')
+print(f'After H_MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Keep only the first (earliest) acquisition per subject
 # ---------------------------------------------------------------------------
-data = data.sort_values(by=['PTID', 'Date'])
-data = data.groupby('PTID', as_index=False).first()
-print(f'After keeping first acquisition only: {data["PTID"].nunique()} subjects')
+data = data.sort_values(by=['PTID.x', 'Date.x'])
+data = data.groupby('PTID.x', as_index=False).first()
+print(f'After keeping first acquisition only: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 4. Compute BAG = SPARE_BA - Age  (before normalization)
 # ---------------------------------------------------------------------------
-data['BAG'] = data['SPARE_BA'] - data['Age']
+data['BAG'] = data['SPARE_BA'] - data['Age.x']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
@@ -86,7 +87,7 @@ std_age  = norm_stats['Age']['std']
 mean_bag = norm_stats['BAG']['mean']
 std_bag  = norm_stats['BAG']['std']
 
-data['Age'] = (data['Age'] - mean_age) / std_age
+data['Age.x'] = (data['Age.x'] - mean_age) / std_age
 data['BAG'] = (data['BAG'] - mean_bag) / std_bag
 
 print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
@@ -108,15 +109,15 @@ os.makedirs(data_dir, exist_ok=True)
 
 
 muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
-keep_cols = muse_cols + ['Sex', 'Age', 'BAG', 'Time', 'PTID']
+keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x']
 keep_cols = [c for c in keep_cols if c in data.columns]
 data = data[keep_cols]
 print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
 
 
 
-data['PTID'] = data['PTID'].astype(str)
-output_path = os.path.join(data_dir, 'accord_data_processed.csv')
+data['PTID.x'] = data['PTID.x'].astype(str)
+output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
 print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
