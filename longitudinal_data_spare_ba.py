@@ -186,9 +186,9 @@ data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == '
 data['Date'] = data['Date'].astype('datetime64[ns]')
 
 # Drop rows missing all H_MUSE ROIs
-hmuse = list(data.filter(regex='H_MUSE*'))
+hmuse = list(data.filter(regex=r'^MUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
-print(f'After H_MUSE NaN removal: {data["PTID"].nunique()} subjects')
+print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Map Diagnosis

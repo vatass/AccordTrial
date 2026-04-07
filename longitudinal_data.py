@@ -280,7 +280,7 @@ subjects_df_hmuse = data.filter(regex=r'^MUSE_')
 mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
 std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
-with open(data_dir + '145_MUSE_allstudies_mean_std_hmuse.pkl', 'wb') as f:
+with open(data_dir + '145_MUSE_allstudies_mean_std.pkl', 'wb') as f:
     pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
 
 for i, c in enumerate(subjects_df_hmuse.columns):

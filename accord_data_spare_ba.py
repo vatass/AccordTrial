@@ -84,23 +84,23 @@ for i, col in enumerate(hmuse_df.columns):
 print(f'MUSE volumes normalized ({len(hmuse_df.columns)} ROIs)')
 
 # ---------------------------------------------------------------------------
-# 6. Normalize Age and BAG using pre-computed training stats
+# 6. Normalize Age and SPARE-BA using pre-computed training stats
 # ---------------------------------------------------------------------------
 norm_stats_path = os.path.join(data_dir, 'normalization_stats.pkl')
-print(f'Loading Age/BAG normalization stats from: {norm_stats_path}')
+print(f'Loading Age/SPARE_BA normalization stats from: {norm_stats_path}')
 with open(norm_stats_path, 'rb') as f:
     norm_stats = pickle.load(f)
 
 mean_age = norm_stats['Age']['mean']
 std_age  = norm_stats['Age']['std']
-mean_bag = norm_stats['BAG']['mean']
-std_bag  = norm_stats['BAG']['std']
+mean_spare_ba = norm_stats['SPARE_BA']['mean']
+std_spare_ba  = norm_stats['SPARE_BA']['std']
 
 data['Age.x'] = (data['Age.x'] - mean_age) / std_age
-data['BAG'] = (data['BAG'] - mean_bag) / std_bag
+data['SPARE_BA'] = (data['SPARE_BA'] - mean_spare_ba) / std_spare_ba
 
 print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
-print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
+print(f'SPARE_BA normalized  — training mean={mean_spare_ba:.2f}, std={std_spare_ba:.2f}')
 
 # ---------------------------------------------------------------------------
 # 7. Encode categorical variables (matching training pipeline)
@@ -115,7 +115,7 @@ os.makedirs(data_dir, exist_ok=True)
 
 
 muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
-keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
+keep_cols = muse_cols + ['Sex.x', 'Age.x', 'SPARE_BA', 'PTID.x', 'Delta_Baseline', 'Time']
 keep_cols = [c for c in keep_cols if c in data.columns]
 data = data[keep_cols]
 print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
@@ -123,7 +123,7 @@ print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta col
 
 
 data['PTID.x'] = data['PTID.x'].astype(str)
-output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
+output_path = os.path.join(data_dir, 'accord_data_spare_ba_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
 print(f'Final shape: {data.shape}  ({data["PTID.x"].nunique()} subjects)')
