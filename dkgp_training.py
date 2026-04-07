@@ -34,7 +34,7 @@ args = parser.parse_args()
 # Parse arguments
 gpu_id = args.gpu_id
 biomarker_index = args.biomarker_index
-biomarker_name = args.biomarker_index
+biomarker_name = args.biomarker_name
 data_file = args.data_file
 fold = args.fold
 train_ids_file = args.train_ids_file
