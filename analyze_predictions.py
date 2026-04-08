@@ -150,21 +150,11 @@ def _compute_subject_metrics(df: pd.DataFrame) -> pd.DataFrame:
         rmse = float(np.sqrt(mse))
         cov  = grp['covered'].mean() if 'covered' in grp.columns else np.nan
         miw  = grp['interval_width'].mean()
-        r2   = np.nan
-        if n >= 3:
-            ss_res = grp['squared_error'].sum()
-            ss_tot = ((grp['ground_truth'] - grp['ground_truth'].mean()) ** 2).sum()
-            # Guard against near-zero variance (pathological for subjects with few,
-            # near-constant observations) — R² is only meaningful at population level
-            if ss_tot > 1e-6:
-                r2 = float(1.0 - ss_res / ss_tot)
-                r2 = float(np.clip(r2, -1.0, 1.0))  # clip extreme values
         row = {
             'PTID': ptid,
             'n_timepoints': n,
             'mae': mae,
             'rmse': rmse,
-            'r2': r2,
             'coverage': cov,
             'mean_interval_width': miw,
         }
@@ -385,7 +375,6 @@ if has_covariates:
                 'MAE_std':   group['mae'].std(),
                 'RMSE_mean': group['rmse'].mean(),
                 'RMSE_std':  group['rmse'].std(),
-                'R2_mean':   group['r2'].mean(),
                 'Coverage_mean': group['coverage'].mean() * 100,
                 'n':         len(group),
             })
@@ -424,7 +413,6 @@ if has_covariates:
             print(f"  {row['Sex']} (n={row['n']}): "
                   f"MAE={row['MAE_mean']:.4f}±{row['MAE_std']:.4f}  "
                   f"RMSE={row['RMSE_mean']:.4f}  "
-                  f"R²={row['R2_mean']:.4f}  "
                   f"Coverage={row['Coverage_mean']:.1f}%")
 
     # -----------------------------------------------------------------------
@@ -479,7 +467,6 @@ if has_covariates:
                 'MAE_std':     group['mae'].std(),
                 'RMSE_mean':   group['rmse'].mean(),
                 'RMSE_std':    group['rmse'].std(),
-                'R2_mean':     group['r2'].mean(),
                 'Coverage_mean': group['coverage'].mean() * 100,
                 'n':           len(group),
             })
@@ -520,7 +507,6 @@ if has_covariates:
             print(f"  {row['Age_group']} (n={row['n']}): "
                   f"MAE={row['MAE_mean']:.4f}±{row['MAE_std']:.4f}  "
                   f"RMSE={row['RMSE_mean']:.4f}  "
-                  f"R²={row['R2_mean']:.4f}  "
                   f"Coverage={row['Coverage_mean']:.1f}%")
 
     # -----------------------------------------------------------------------
@@ -589,7 +575,6 @@ if has_covariates:
                 'n': len(grp),
                 'MAE':  grp['mae'].mean(),
                 'RMSE': grp['rmse'].mean(),
-                'R2':   grp['r2'].mean(),
                 'Coverage': grp['coverage'].mean() * 100,
             })
 
