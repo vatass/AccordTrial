@@ -40,8 +40,9 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument('--predictions_file', required=True,
                     help='CSV produced by dkgp_training.py with per-sample predictions')
-parser.add_argument('--covariates_file', default=None,
-                    help='Longitudinal covariates CSV (e.g. longitudinal_covariates_bag_allstudies.csv)')
+parser.add_argument('--covariates_file',
+                    default='./data/longitudinal_covariates_bag_allstudies.csv',
+                    help='Longitudinal covariates CSV (default: ./data/longitudinal_covariates_bag_allstudies.csv)')
 parser.add_argument('--output_dir', default='./prediction_analysis',
                     help='Directory to save plots and tables')
 parser.add_argument('--biomarker_name', default='Biomarker',
