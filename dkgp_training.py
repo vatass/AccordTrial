@@ -254,11 +254,13 @@ print(f"Per-sample predictions saved to {predictions_filename}")
 # Per-subject aggregated metrics
 # ------------------------------------------------------------------
 def _r2_subject(group):
-    if len(group) < 2:
+    if len(group) < 3:
         return np.nan
     ss_res = group['squared_error'].sum()
     ss_tot = ((group['ground_truth'] - group['ground_truth'].mean()) ** 2).sum()
-    return float(1.0 - ss_res / ss_tot) if ss_tot > 0 else np.nan
+    if ss_tot <= 1e-6:
+        return np.nan
+    return float(np.clip(1.0 - ss_res / ss_tot, -1.0, 1.0))
 
 subject_metrics = (
     predictions_df.groupby('PTID')
