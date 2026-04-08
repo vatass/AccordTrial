@@ -25,7 +25,8 @@ parser.add_argument("--biomarker_name", help="Biomarker name", type=str, require
 parser.add_argument("--output_dir", help="Directory to save model outputs", default="./models")
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
 parser.add_argument("--fold", help="fold", type=int, default=0)
-parser.add_argument("--covariates_file", help="Path to longitudinal covariates CSV (for per-subject Sex/Age metadata)", default=None)
+parser.add_argument("--covariates_file", help="Path to longitudinal covariates CSV (for per-subject Sex/Age metadata)",
+                    default="./data/longitudinal_covariates_bag_allstudies.csv")
 
 
 
