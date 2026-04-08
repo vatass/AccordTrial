@@ -151,10 +151,14 @@ def _compute_subject_metrics(df: pd.DataFrame) -> pd.DataFrame:
         cov  = grp['covered'].mean() if 'covered' in grp.columns else np.nan
         miw  = grp['interval_width'].mean()
         r2   = np.nan
-        if n >= 2:
+        if n >= 3:
             ss_res = grp['squared_error'].sum()
             ss_tot = ((grp['ground_truth'] - grp['ground_truth'].mean()) ** 2).sum()
-            r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else np.nan
+            # Guard against near-zero variance (pathological for subjects with few,
+            # near-constant observations) — R² is only meaningful at population level
+            if ss_tot > 1e-6:
+                r2 = float(1.0 - ss_res / ss_tot)
+                r2 = float(np.clip(r2, -1.0, 1.0))  # clip extreme values
         row = {
             'PTID': ptid,
             'n_timepoints': n,
@@ -333,7 +337,8 @@ if has_covariates:
     # -----------------------------------------------------------------------
     # Figure 4: Error by Sex — violin + bar chart
     # -----------------------------------------------------------------------
-    sex_groups  = [s for s in ['Male', 'Female'] if s in subj_df.get('Sex_label', pd.Series()).values]
+    sex_groups  = [s for s in ['Male', 'Female']
+                   if 'Sex_label' in subj_df.columns and s in subj_df['Sex_label'].values]
     sex_mae     = {s: subj_df[subj_df['Sex_label'] == s]['mae'].dropna().values for s in sex_groups}
     sex_mae     = {k: v for k, v in sex_mae.items() if len(v) > 0}
 
@@ -426,7 +431,8 @@ if has_covariates:
     # Figure 5: Error by Age group — violin + bar chart
     # -----------------------------------------------------------------------
     valid_age_groups = [ag for ag in AGE_LABELS
-                        if ag in subj_df.get('Age_group', pd.Series()).astype(str).values]
+                        if 'Age_group' in subj_df.columns
+                        and ag in subj_df['Age_group'].astype(str).values]
     age_mae = {ag: subj_df[subj_df['Age_group'].astype(str) == ag]['mae'].dropna().values
                for ag in valid_age_groups}
     age_mae = {k: v for k, v in age_mae.items() if len(v) > 0}
