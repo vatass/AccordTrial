@@ -25,6 +25,7 @@ parser.add_argument("--biomarker_name", help="Biomarker name", type=str, require
 parser.add_argument("--output_dir", help="Directory to save model outputs", default="./models")
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
 parser.add_argument("--fold", help="fold", type=int, default=0)
+parser.add_argument("--covariates_file", help="Path to longitudinal covariates CSV (for per-subject Sex/Age metadata)", default=None)
 
 
 
@@ -82,9 +83,15 @@ for t in test_ids:
 
 # Prepare data
 train_x = datasamples[datasamples['PTID'].isin(train_ids)]['X']
-train_y = datasamples[datasamples['PTID'].isin(train_ids)]['Y']    
+train_y = datasamples[datasamples['PTID'].isin(train_ids)]['Y']
 test_x = datasamples[datasamples['PTID'].isin(test_ids)]['X']
 test_y = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
+
+# Extract per-sample metadata for prediction tracking (before tensor conversion)
+test_data_raw = datasamples[datasamples['PTID'].isin(test_ids)]
+test_ptids_list = test_data_raw['PTID'].tolist()
+# Time is the last element of the feature vector in X
+test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_data_raw['X']]
 
 print('Train data shape:', train_x.shape)
 print('Test data shape:', test_x.shape)
@@ -187,7 +194,7 @@ coverage, interval_width, mean_coverage, mean_interval_width = calc_coverage(
     intervals=[lower.cpu().detach().numpy(), upper.cpu().detach().numpy()]
 )  
 
-coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy() 
+coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy()
 
 print(f"\nResults for Biomarker {biomarker_name}:")
 print(f"MAE: {mae_pop:.4f}")
@@ -196,6 +203,96 @@ print(f"RMSE: {rmse_pop:.4f}")
 print(f"R²: {rsq:.4f}")
 print(f"Coverage: {np.mean(coverage):.4f}")
 print(f"Interval Width: {mean_interval_width:.4f}")
+
+# ------------------------------------------------------------------
+# Per-sample predictions DataFrame
+# ------------------------------------------------------------------
+test_y_np      = test_y.cpu().detach().numpy()
+mean_np        = mean.cpu().detach().numpy()
+lower_np       = lower.cpu().detach().numpy()
+upper_np       = upper.cpu().detach().numpy()
+variance_np    = variance.cpu().detach().numpy()
+interval_np    = upper_np - lower_np
+abs_error_np   = np.abs(test_y_np - mean_np)
+sq_error_np    = (test_y_np - mean_np) ** 2
+
+predictions_df = pd.DataFrame({
+    'PTID':           test_ptids_list,
+    'time_months':    test_time_list,
+    'ground_truth':   test_y_np,
+    'predicted':      mean_np,
+    'lower_bound':    lower_np,
+    'upper_bound':    upper_np,
+    'variance':       variance_np,
+    'interval_width': interval_np,
+    'abs_error':      abs_error_np,
+    'squared_error':  sq_error_np,
+    'covered':        coverage.astype(int),
+})
+
+# Optionally enrich with baseline Sex and Age from covariates file
+if args.covariates_file and os.path.exists(args.covariates_file):
+    cov_df = pd.read_csv(args.covariates_file)
+    cov_df['PTID'] = cov_df['PTID'].astype(str)
+    predictions_df['PTID'] = predictions_df['PTID'].astype(str)
+    # Use age at first (baseline) timepoint per subject
+    baseline_cov = (cov_df.sort_values('Time')
+                          .groupby('PTID')
+                          .first()
+                          .reset_index()[['PTID', 'Sex', 'Age']]
+                          .rename(columns={'Age': 'BaselineAge'}))
+    predictions_df = predictions_df.merge(baseline_cov, on='PTID', how='left')
+    print(f"Covariates merged: Sex/BaselineAge added for {predictions_df['Sex'].notna().sum()} observations")
+
+# Save per-sample predictions
+predictions_filename = os.path.join(output_dir, f'predictions_{biomarker_name}_{biomarker_index}_{fold}.csv')
+predictions_df.to_csv(predictions_filename, index=False)
+print(f"Per-sample predictions saved to {predictions_filename}")
+
+# ------------------------------------------------------------------
+# Per-subject aggregated metrics
+# ------------------------------------------------------------------
+def _r2_subject(group):
+    if len(group) < 2:
+        return np.nan
+    ss_res = group['squared_error'].sum()
+    ss_tot = ((group['ground_truth'] - group['ground_truth'].mean()) ** 2).sum()
+    return float(1.0 - ss_res / ss_tot) if ss_tot > 0 else np.nan
+
+subject_metrics = (
+    predictions_df.groupby('PTID')
+    .agg(
+        n_timepoints    = ('ground_truth', 'count'),
+        mae             = ('abs_error', 'mean'),
+        mse             = ('squared_error', 'mean'),
+        coverage_rate   = ('covered', 'mean'),
+        mean_interval_width = ('interval_width', 'mean'),
+        mean_predicted  = ('predicted', 'mean'),
+        mean_ground_truth = ('ground_truth', 'mean'),
+    )
+    .reset_index()
+)
+subject_metrics['rmse'] = np.sqrt(subject_metrics['mse'])
+
+r2_vals = predictions_df.groupby('PTID').apply(_r2_subject).reset_index()
+r2_vals.columns = ['PTID', 'r2']
+subject_metrics = subject_metrics.merge(r2_vals, on='PTID')
+
+# Carry over baseline covariates if present
+for col in ['Sex', 'BaselineAge']:
+    if col in predictions_df.columns:
+        first_vals = predictions_df.groupby('PTID')[col].first().reset_index()
+        subject_metrics = subject_metrics.merge(first_vals, on='PTID', how='left')
+
+subject_metrics_filename = os.path.join(output_dir, f'subject_metrics_{biomarker_name}_{biomarker_index}_{fold}.csv')
+subject_metrics.to_csv(subject_metrics_filename, index=False)
+print(f"Per-subject metrics saved to {subject_metrics_filename}")
+
+print(f"\nPer-subject metric summary (n={len(subject_metrics)} subjects):")
+print(f"  MAE  — mean: {subject_metrics['mae'].mean():.4f}, median: {subject_metrics['mae'].median():.4f}")
+print(f"  RMSE — mean: {subject_metrics['rmse'].mean():.4f}")
+print(f"  R²   — mean: {subject_metrics['r2'].mean():.4f}")
+print(f"  Coverage — mean: {subject_metrics['coverage_rate'].mean():.4f}")
 
 # Save model
 model_filename = os.path.join(output_dir, f'deep_kernel_gp_{biomarker_name}_{biomarker_index}_{fold}.pth')
@@ -209,7 +306,11 @@ results = {
     'r2': float(rsq),
     'coverage': float(np.mean(coverage)),
     'interval_width': float(mean_interval_width),
-    'training_time': float(time.time() - t0)
+    'training_time': float(time.time() - t0),
+    'predictions_file': predictions_filename,
+    'subject_metrics_file': subject_metrics_filename,
+    'n_test_subjects': int(len(test_ids)),
+    'n_test_observations': int(len(predictions_df)),
 }
 
 results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}_{biomarker_index}_{fold}.json')
