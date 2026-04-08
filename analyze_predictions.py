@@ -45,7 +45,7 @@ parser.add_argument('--covariates_file',
                     help='Longitudinal covariates CSV (default: ./data/longitudinal_covariates_bag_allstudies.csv)')
 parser.add_argument('--output_dir', default='./prediction_analysis',
                     help='Directory to save plots and tables')
-parser.add_argument('--biomarker_name', default='Biomarker',
+parser.add_argument('--biomarker_name', default='BAG',
                     help='Biomarker name used in plot titles and file names')
 parser.add_argument('--normalization_stats_file', default=None,
                     help='Pickle file with normalization stats for optional denormalization')

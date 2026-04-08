@@ -111,6 +111,7 @@ test_data = test_data.loc[:, ~test_data.columns.str.contains('^Unnamed')]
 
 print('Columns: ', test_data.columns)
 
+
 # For each subject, extract only the first (baseline) row so that
 # baseline_ptids[i] and baseline_data[i] are guaranteed to correspond.
 # Taking all rows and indexing by enumerate(unique_ptids) breaks the
