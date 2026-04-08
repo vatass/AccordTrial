@@ -89,7 +89,9 @@ target_mean, target_std = 0.0, 1.0
 if args.normalization_stats_file and os.path.exists(args.normalization_stats_file):
     with open(args.normalization_stats_file, 'rb') as fh:
         norm_stats = pickle.load(fh)
-    key = BIOMARKER.upper()
+    # Normalize biomarker name variants to match stats keys (e.g. SPARE-BA -> SPARE_BA)
+    _norm_key_map = {'SPARE-BA': 'SPARE_BA', 'SPARE_BA': 'SPARE_BA', 'BAG': 'BAG'}
+    key = _norm_key_map.get(BIOMARKER.upper(), BIOMARKER.upper())
     if key in norm_stats:
         target_mean = float(norm_stats[key]['mean'])
         target_std  = float(norm_stats[key]['std'])
