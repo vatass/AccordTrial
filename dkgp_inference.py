@@ -154,7 +154,7 @@ def load_target_stats(biomarker, roi_idx, stats_dir):
         raise ValueError(f"Unexpected stats format: {type(obj)}")
 
     if biomarker == 'MUSE':
-        stats = _load(os.path.join(stats_dir, 'dlmuse_rois_mean_std.pkl'))
+        stats = _load(os.path.join(stats_dir, '145_MUSE_allstrudies_mean_std.pkl'))
         roi_col = muse_cols[roi_idx]
         return float(stats['mean']['DL_MUSE_Volume_' + str(roi_col)]), \
                float(stats['std']['DL_MUSE_Volume_'  + str(roi_col)])
@@ -190,7 +190,7 @@ for time_point in future_timepoints:
     
     # Create future data by modifying the time component (last feature)
     future_data = baseline_data.copy()
-
+    
     print(f"Time point: {time_point}")
 
     future_data[:, -1] = time_point  # Set time to future time point

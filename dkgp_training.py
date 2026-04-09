@@ -110,6 +110,8 @@ if torch.cuda.is_available():
 print('Processed Train Data:', train_x.shape)
 print('Processed Test Data:', test_x.shape)
 
+sys.exit(0)
+
 print("\n=== FEATURE VERIFICATION ===")
 print(f"Number of features in training data: {train_x.shape[1]}")
 print("=== END VERIFICATION ===\n")
@@ -158,7 +160,7 @@ optimizer = torch.optim.Adam([
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
-iterations = 1500
+iterations = 200
 print(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()

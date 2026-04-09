@@ -19,7 +19,7 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 # 1. Load ACCORD data
 # ---------------------------------------------------------------------------
-data = pd.read_csv('ACCORD_MARCH.csv')
+data = pd.read_csv('./data/ACCORD_MARCH.csv')
 
 
 print('Subjects', data['PTID.x'].nunique())
