@@ -38,6 +38,25 @@ data = data.drop_duplicates(subset=['PTID.x', 'Date.x'], keep='first')
 
 data['Date.x'] = pd.to_datetime(data['Date.x'])
 
+# ---------------------------------------------------------------------------
+# 2b. Merge SPARE_BA scores (computed externally via the SPARE tool)
+# ---------------------------------------------------------------------------
+spare_ba_path = 'SPARE_BA_out_20260319.csv'
+spare_ba_df = pd.read_csv(spare_ba_path)[['MRID', 'SPARE_BA']]
+
+# Build the same MRID key: PTID-YYYYMMDD
+data['MRID'] = data['PTID.x'].astype(str) + '-' + data['Date.x'].dt.strftime('%Y%m%d')
+
+# Drop any existing (all-NaN) SPARE_BA column before the merge
+if 'SPARE_BA' in data.columns:
+    data = data.drop(columns=['SPARE_BA'])
+
+data = data.merge(spare_ba_df, on='MRID', how='left')
+data = data.drop(columns=['MRID'])
+
+matched = data['SPARE_BA'].notna().sum()
+print(f'SPARE_BA merged: {matched}/{len(data)} rows matched')
+
 # Drop rows missing all MUSE volume ROIs
 muse_volume_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
 if muse_volume_cols:
@@ -63,15 +82,8 @@ print(f'Total acquisitions: {data.shape[0]}')
 # ---------------------------------------------------------------------------
 # 4. Compute BAG = SPARE_BA - Age  (before normalization)
 # ---------------------------------------------------------------------------
-if 'SPARE_BA' in data.columns and data['SPARE_BA'].notna().any():
-    data['BAG'] = data['SPARE_BA'] - data['Age.x']
-    print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
-    _bag_available = True
-else:
-    # SPARE_BA not computed for this dataset; initialize BAG column to NaN
-    # It will be set to 0 (normalized population mean) after normalization stats load
-    data['BAG'] = np.nan
-    print('WARNING: SPARE_BA not available — BAG will be set to population mean (0 in normalized scale)')
+data['BAG'] = data['SPARE_BA'] - data['Age.x']
+print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
 # 5. Normalize MUSE volumes using pre-computed training stats
@@ -105,16 +117,10 @@ mean_bag = norm_stats['BAG']['mean']
 std_bag  = norm_stats['BAG']['std']
 
 data['Age.x'] = (data['Age.x'] - mean_age) / std_age
-
-if data['BAG'].isna().all():
-    # No SPARE_BA available: use 0 in normalized scale = population mean BAG
-    data['BAG'] = 0.0
-    print(f'BAG set to 0 (normalized population mean={mean_bag:.2f}, std={std_bag:.2f})')
-else:
-    data['BAG'] = (data['BAG'] - mean_bag) / std_bag
-    print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
+data['BAG'] = (data['BAG'] - mean_bag) / std_bag
 
 print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
+print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 
 # ---------------------------------------------------------------------------
 # 7. Encode categorical variables (matching training pipeline)
