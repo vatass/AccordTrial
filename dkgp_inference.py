@@ -133,6 +133,10 @@ baseline_data = np.array(baseline_data)
 print(f"Extracted baseline data for {len(baseline_ptids)} subjects")
 print(f"Baseline feature shape: {baseline_data.shape}")
 
+# Extract normalized BAG feature (second-to-last column; last is Time)
+# Will be denormalized after loading stats below
+_baseline_bag_norm = baseline_data[:, -2].copy()
+
 # ------------------- Denormalization Setup -------------------
 def load_target_stats(biomarker, roi_idx, stats_dir):
     """Return (mean, std) used to normalize the target variable during training,
@@ -181,6 +185,13 @@ except Exception as e:
     print(f"⚠️  Could not load denormalization stats: {e}")
     print("Predictions will remain in normalized scale.")
     denormalize = False
+
+# Denormalize the baseline BAG input feature so it can be stored in results
+# The BAG input feature uses the same normalization as the BAG target
+if denormalize:
+    baseline_bag_real = _baseline_bag_norm * target_std + target_mean
+else:
+    baseline_bag_real = _baseline_bag_norm  # keep normalized if stats unavailable
 
 # Create future time point data
 all_results = []
@@ -236,6 +247,7 @@ for time_point in future_timepoints:
             'lower_bound': lower_np[i],
             'upper_bound': upper_np[i],
             'interval_width': upper_np[i] - lower_np[i],
+            'baseline_BAG': float(baseline_bag_real[i]),
             'biomarker': biomarker
         }
         all_results.append(result)
