@@ -253,33 +253,20 @@ print(f"Per-sample predictions saved to {predictions_filename}")
 # ------------------------------------------------------------------
 # Per-subject aggregated metrics
 # ------------------------------------------------------------------
-def _r2_subject(group):
-    if len(group) < 3:
-        return np.nan
-    ss_res = group['squared_error'].sum()
-    ss_tot = ((group['ground_truth'] - group['ground_truth'].mean()) ** 2).sum()
-    if ss_tot <= 1e-6:
-        return np.nan
-    return float(np.clip(1.0 - ss_res / ss_tot, -1.0, 1.0))
-
 subject_metrics = (
     predictions_df.groupby('PTID')
     .agg(
-        n_timepoints    = ('ground_truth', 'count'),
-        mae             = ('abs_error', 'mean'),
-        mse             = ('squared_error', 'mean'),
-        coverage_rate   = ('covered', 'mean'),
+        n_timepoints      = ('ground_truth', 'count'),
+        mae               = ('abs_error', 'mean'),
+        mse               = ('squared_error', 'mean'),
+        coverage_rate     = ('covered', 'mean'),
         mean_interval_width = ('interval_width', 'mean'),
-        mean_predicted  = ('predicted', 'mean'),
+        mean_predicted    = ('predicted', 'mean'),
         mean_ground_truth = ('ground_truth', 'mean'),
     )
     .reset_index()
 )
 subject_metrics['rmse'] = np.sqrt(subject_metrics['mse'])
-
-r2_vals = predictions_df.groupby('PTID').apply(_r2_subject).reset_index()
-r2_vals.columns = ['PTID', 'r2']
-subject_metrics = subject_metrics.merge(r2_vals, on='PTID')
 
 # Carry over baseline covariates if present
 for col in ['Sex', 'BaselineAge']:
@@ -294,7 +281,6 @@ print(f"Per-subject metrics saved to {subject_metrics_filename}")
 print(f"\nPer-subject metric summary (n={len(subject_metrics)} subjects):")
 print(f"  MAE  — mean: {subject_metrics['mae'].mean():.4f}, median: {subject_metrics['mae'].median():.4f}")
 print(f"  RMSE — mean: {subject_metrics['rmse'].mean():.4f}")
-print(f"  R²   — mean: {subject_metrics['r2'].mean():.4f}")
 print(f"  Coverage — mean: {subject_metrics['coverage_rate'].mean():.4f}")
 
 # Save model
