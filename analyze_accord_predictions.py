@@ -87,12 +87,27 @@ std_age  = norm_stats['Age']['std']
 
 
 
-# Per-subject baseline demographics (Time == 0)
-demo = (accord_data[accord_data['Time'] == 0]
-        [['PTID', 'Sex', 'Age']]
+# Per-subject Sex from processed CSV (Time == 0 row)
+demo = (accord_data[accord_data['Time'] == 0][['PTID', 'Sex']]
         .drop_duplicates('PTID')
         .copy())
-demo['Age_years'] = demo['Age'] * std_age + mean_age
+
+# Age from SPARE_BA file (has Age_actual per MRID = PTID-Date)
+# Extract baseline age (first visit per subject)
+spare_ba_path = 'SPARE_BA_out_20260319.csv'
+if os.path.exists(spare_ba_path):
+    sba = pd.read_csv(spare_ba_path)[['MRID', 'Age_actual']]
+    sba['PTID'] = sba['MRID'].str.rsplit('-', n=1).str[0]
+    age_baseline = (sba.groupby('PTID')['Age_actual']
+                    .first()
+                    .reset_index()
+                    .rename(columns={'Age_actual': 'Age_years'}))
+    demo = demo.merge(age_baseline, on='PTID', how='left')
+    print(f'Age loaded from {spare_ba_path}: '
+          f'{demo["Age_years"].notna().sum()}/{len(demo)} subjects matched')
+else:
+    demo['Age_years'] = np.nan
+    print(f'WARNING: {spare_ba_path} not found — Age will be unavailable')
 
 ensemble = ensemble.merge(demo[['PTID', 'Sex', 'Age_years']], on='PTID', how='left')
 ensemble['Sex_label'] = ensemble['Sex'].map({0: 'Male', 1: 'Female'})
