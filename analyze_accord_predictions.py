@@ -296,9 +296,13 @@ if len(matched) >= 10 and len(obs_tps) > 0:
     ncols_s = len(obs_tps)
     fig, axes = plt.subplots(1, ncols_s, figsize=(5 * ncols_s, 5), squeeze=False)
     for ax, tp in zip(axes[0], obs_tps):
-        tp_data = matched[matched['time_months'] == tp]
-        r, pval = stats.pearsonr(tp_data['real_BAG'], tp_data['predicted_value'])
+        tp_data = matched[matched['time_months'] == tp].dropna(subset=['real_BAG', 'predicted_value'])
         mae = np.mean(np.abs(tp_data['real_BAG'] - tp_data['predicted_value']))
+        if len(tp_data) >= 2:
+            r, pval = stats.pearsonr(tp_data['real_BAG'], tp_data['predicted_value'])
+            corr_str = f'r={r:.3f}'
+        else:
+            corr_str = 'n<2'
 
         ax.scatter(tp_data['real_BAG'], tp_data['predicted_value'],
                    alpha=0.5, s=30, color='steelblue', edgecolors='none')
@@ -307,7 +311,7 @@ if len(matched) >= 10 and len(obs_tps) > 0:
         ax.plot([lo, hi], [lo, hi], 'r--', lw=1.5, label='Identity')
         ax.set_xlabel('Observed BAG (years)', fontsize=11)
         ax.set_ylabel('Predicted BAG (years)', fontsize=11)
-        ax.set_title(f't={tp}m\nr={r:.3f}, MAE={mae:.2f}yr\n(n={len(tp_data)})',
+        ax.set_title(f't={tp}m\n{corr_str}, MAE={mae:.2f}yr\n(n={len(tp_data)})',
                      fontsize=11)
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3)
