@@ -20,14 +20,15 @@ parser.add_argument("--model_file", help="Path to the trained model file", requi
 parser.add_argument("--biomarker_index", help="biomarker index for inference", type=int, required=True)
 parser.add_argument("--biomarker_name", help="biomarker name for inference", type=str, required=True)
 parser.add_argument("--output_file", help="Path to save inference results CSV", required=True)
-parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG)", required=True)
+parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG, SPARE_BA)", required=True)
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
+parser.add_argument("--stats_dir", help="Directory containing normalization stats files", default="./data")
 
 args = parser.parse_args()
 
 # Parse arguments
 gpu_id = args.gpu_id
-roi_idx = args.roi_idx
+roi_idx = args.biomarker_index
 data_file = args.data_file
 model_file = args.model_file
 output_file = args.output_file
@@ -154,17 +155,16 @@ def load_target_stats(biomarker, roi_idx, stats_dir):
 
     if biomarker == 'MUSE':
         stats = _load(os.path.join(stats_dir, 'dlmuse_rois_mean_std.pkl'))
-
         roi_col = muse_cols[roi_idx]
-    
-        target_mean = stats['mean']['DL_MUSE_Volume_' + str(roi_col)]
-        target_std = stats['std']['DL_MUSE_Volume_' + str(roi_col)]
-
-        return float( stats['mean']['DL_MUSE_Volume_' + str(roi_col)]), float(stats['std']['DL_MUSE_Volume_' + str(roi_col)])
+        return float(stats['mean']['DL_MUSE_Volume_' + str(roi_col)]), \
+               float(stats['std']['DL_MUSE_Volume_'  + str(roi_col)])
+    elif biomarker in ('BAG', 'SPARE_BA', 'SPARE-BA'):
+        # Both BAG and SPARE_BA stats live in normalization_stats.pkl
+        norm_stats = _load(os.path.join(stats_dir, 'normalization_stats.pkl'))
+        key = 'SPARE_BA' if biomarker in ('SPARE_BA', 'SPARE-BA') else 'BAG'
+        return float(norm_stats[key]['mean']), float(norm_stats[key]['std'])
     elif biomarker == 'SPARE_AD':
         return _unpack(_load(os.path.join(stats_dir, 'spare_ad_mean_std.pkl')))
-    elif biomarker == 'SPARE_BA':
-        return _unpack(_load(os.path.join(stats_dir, 'spare_ba_mean_std.pkl')))
     elif biomarker == 'MMSE':
         return _unpack(_load(os.path.join(stats_dir, 'mmse_mean_std.pkl')))
     elif biomarker == 'ADAS':
