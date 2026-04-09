@@ -69,7 +69,7 @@ print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 # ---------------------------------------------------------------------------
 # 5. Normalize MUSE volumes using pre-computed training stats
 # ---------------------------------------------------------------------------
-hmuse_stats_path = os.path.join(data_dir, '145_MUSE_allstudies_mean_std_hmuse.pkl')
+hmuse_stats_path = os.path.join(data_dir, '145_MUSE_allstudies_mean_std.pkl')
 print(f'Loading H_MUSE normalization stats from: {hmuse_stats_path}')
 with open(hmuse_stats_path, 'rb') as f:
     hmuse_stats = pickle.load(f)
