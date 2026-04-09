@@ -36,7 +36,8 @@ print(f'Renamed {len(rename_map)} columns (X4–X207 → MUSE_Volume_4–MUSE_Vo
 # ---------------------------------------------------------------------------
 data = data.drop_duplicates(subset=['PTID.x', 'Date.x'], keep='first')
 
-data['Date.x'] = pd.to_datetime(data['Date.x'])
+# Date.x is stored as integer YYYYMMDD (e.g. 20040121) — parse explicitly
+data['Date.x'] = pd.to_datetime(data['Date.x'].astype(str), format='%Y%m%d')
 
 # ---------------------------------------------------------------------------
 # 2b. Merge SPARE_BA scores (computed externally via the SPARE tool)
@@ -44,15 +45,12 @@ data['Date.x'] = pd.to_datetime(data['Date.x'])
 spare_ba_path = 'SPARE_BA_out_20260319.csv'
 spare_ba_df = pd.read_csv(spare_ba_path)[['MRID', 'SPARE_BA']]
 
-# Build the same MRID key: PTID-YYYYMMDD
-data['MRID'] = data['PTID.x'].astype(str) + '-' + data['Date.x'].dt.strftime('%Y%m%d')
-
+# ACCORD_MARCH.csv already contains an MRID column (PTID-YYYYMMDD format)
 # Drop any existing (all-NaN) SPARE_BA column before the merge
 if 'SPARE_BA' in data.columns:
     data = data.drop(columns=['SPARE_BA'])
 
 data = data.merge(spare_ba_df, on='MRID', how='left')
-data = data.drop(columns=['MRID'])
 
 matched = data['SPARE_BA'].notna().sum()
 print(f'SPARE_BA merged: {matched}/{len(data)} rows matched')
