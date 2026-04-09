@@ -96,7 +96,6 @@ test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_dat
 
 print('Train data shape:', train_x.shape)
 print('Test data shape:', test_x.shape)
-
 # Process data
 train_x, train_y, test_x, test_y = process_temporal_singletask_data(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
 
@@ -109,8 +108,6 @@ if torch.cuda.is_available():
 
 print('Processed Train Data:', train_x.shape)
 print('Processed Test Data:', test_x.shape)
-
-sys.exit(0)
 
 print("\n=== FEATURE VERIFICATION ===")
 print(f"Number of features in training data: {train_x.shape[1]}")
@@ -151,7 +148,7 @@ deepkernelmodel.train()
 deepkernelmodel.likelihood.train()
 
 optimizer = torch.optim.Adam([
-    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.01, 'weight_decay': 1e-4},
+    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.01, 'weight_decay': 1e-2},
     {'params': deepkernelmodel.covar_module.parameters(), 'lr': 0.01},
     {'params': deepkernelmodel.mean_module.parameters(), 'lr': 0.01},
     {'params': deepkernelmodel.likelihood.parameters(), 'lr': 0.01}
@@ -160,7 +157,7 @@ optimizer = torch.optim.Adam([
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
-iterations = 200
+iterations = 500
 print(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()
