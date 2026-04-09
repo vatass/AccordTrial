@@ -149,7 +149,7 @@ deepkernelmodel.train()
 deepkernelmodel.likelihood.train()
 
 optimizer = torch.optim.Adam([
-    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.01, 'weight_decay': 1e-4},
+    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.01, 'weight_decay': 1e-3},
     {'params': deepkernelmodel.covar_module.parameters(), 'lr': 0.01},
     {'params': deepkernelmodel.mean_module.parameters(), 'lr': 0.01},
     {'params': deepkernelmodel.likelihood.parameters(), 'lr': 0.01}
