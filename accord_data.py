@@ -38,10 +38,11 @@ data = data.drop_duplicates(subset=['PTID.x', 'Date.x'], keep='first')
 
 data['Date.x'] = pd.to_datetime(data['Date.x'])
 
-# Drop rows missing all H_MUSE ROIs
-hmuse_cols = list(data.filter(regex='H_MUSE*').columns)
-data = data.dropna(axis=0, subset=hmuse_cols)
-print(f'After H_MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
+# Drop rows missing all MUSE volume ROIs
+muse_volume_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
+if muse_volume_cols:
+    data = data.dropna(axis=0, subset=muse_volume_cols)
+print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Sort and compute Time (months from first acquisition per subject)
@@ -55,7 +56,7 @@ data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
 # Remove duplicate Time entries per subject (keep first occurrence)
-data = data.groupby(['PTID.x', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
+data = data.groupby(['PTID.x', 'Time'], as_index=False).agg(lambda x: x.iloc[0])
 print(f'Subjects after time deduplication: {data["PTID.x"].nunique()}')
 print(f'Total acquisitions: {data.shape[0]}')
 
