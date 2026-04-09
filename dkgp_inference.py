@@ -119,12 +119,12 @@ print('Columns: ', test_data.columns)
 baseline_data = []
 baseline_ptids = []
 
-for ptid in test_data['PTID.x'].unique():
-    subject_data = test_data[test_data['PTID.x'] == ptid]
+for ptid in test_data['PTID'].unique():
+    subject_data = test_data[test_data['PTID'] == ptid]
     if len(subject_data) > 0:
         # Get the first record (baseline, time = 0) for this subject
         baseline_record = subject_data.iloc[0]
-        features = baseline_record.drop(labels=['PTID.x']).to_numpy(dtype=np.float32)
+        features = baseline_record.drop(labels=['PTID']).to_numpy(dtype=np.float32)
         baseline_data.append(features)
         baseline_ptids.append(ptid)
 
