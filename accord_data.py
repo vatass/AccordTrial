@@ -105,28 +105,47 @@ print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 # ---------------------------------------------------------------------------
 # 7. Encode categorical variables (matching training pipeline)
 # ---------------------------------------------------------------------------
+# Rename .x-suffixed columns that originated from the ACCORD merge
+rename_map_cols = {'PTID.x': 'PTID', 'Sex.x': 'Sex', 'Age.x': 'Age'}
+data = data.rename(columns={k: v for k, v in rename_map_cols.items() if k in data.columns})
+
 if data['Sex'].dtype == object:
     data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
-if data['Education_Years'].dtype != int:
+if 'Education_Years' in data.columns and data['Education_Years'].dtype != int:
     data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 
 # ---------------------------------------------------------------------------
-# 8. Save processed ACCORD data
+# 8. Select exactly the features used during training
+#    Load features_bag.pkl (saved by longitudinal_data.py) so the column
+#    set and order are guaranteed to match the trained model.
 # ---------------------------------------------------------------------------
+features_pkl_path = os.path.join(data_dir, 'features_bag.pkl')
+if not os.path.exists(features_pkl_path):
+    raise FileNotFoundError(
+        f'{features_pkl_path} not found. Run longitudinal_data.py first.')
+
+with open(features_pkl_path, 'rb') as f:
+    train_features = pickle.load(f)
+
+# train_features = [MUSE_Volume_* <300, Sex, BAG, PTID, Delta_Baseline, Time]
+# Model input = train_features minus PTID and Delta_Baseline (Time kept as
+# last feature; the inference script overwrites it per future timepoint).
+model_features = [c for c in train_features if c not in ('PTID', 'Delta_Baseline')]
+# model_features = [MUSE_Volume_* <300, Sex, BAG, Time]  (148 - 2 = 146... + Time = 148 total with PTID excluded)
+
+missing = [c for c in model_features if c not in data.columns]
+if missing:
+    raise ValueError(f'ACCORD data is missing columns required by the model: {missing}')
+
 os.makedirs(data_dir, exist_ok=True)
+data['PTID'] = data['PTID'].astype(str)
+output_cols = ['PTID'] + model_features
+data = data[output_cols]
 
-
-muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
-keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
-keep_cols = [c for c in keep_cols if c in data.columns]
-data = data[keep_cols]
-print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
-
-
-
-data['PTID.x'] = data['PTID.x'].astype(str)
 output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
-print(f'Final shape: {data.shape}  ({data["PTID.x"].nunique()} subjects)')
+print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
+print(f'Feature columns (excl. PTID): {len(model_features)}  '
+      f'— matches training feature count')
