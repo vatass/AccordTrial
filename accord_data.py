@@ -144,6 +144,15 @@ data['PTID'] = data['PTID'].astype(str)
 output_cols = ['PTID'] + model_features
 data = data[output_cols]
 
+# Drop any rows with NaN in model features (e.g. missing SPARE_BA → NaN BAG)
+# A single NaN input causes the GP kernel matrix to produce NaN for all predictions
+before = data['PTID'].nunique()
+data = data.dropna(subset=model_features)
+after = data['PTID'].nunique()
+if before != after:
+    print(f'Dropped {before - after} subjects with NaN in model features '
+          f'(e.g. missing SPARE_BA/Sex)')
+
 output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
