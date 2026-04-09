@@ -113,7 +113,7 @@ ensemble = ensemble.merge(demo[['PTID', 'Sex', 'Age_years']], on='PTID', how='le
 ensemble['Sex_label'] = ensemble['Sex'].map({0: 'Male', 1: 'Female'})
 
 timepoints = sorted(ensemble['time_months'].unique())
-sex_colors = {'Male': '#2196F3', 'Female': '#E91E63'}
+TRAJ_COLOR = 'steelblue'
 
 print(f'Sex breakdown: '
       f'{(demo["Sex"] == 0).sum()} Male, '
@@ -124,11 +124,17 @@ obs_timepoints = sorted(ensemble.loc[ensemble['real_BAG'].notna(), 'time_months'
 print(f'Timepoints with real BAG observations: {obs_timepoints}')
 
 # ---------------------------------------------------------------------------
-# Figure 1: Population-level trajectory + observed BAG
+# Figure 1: Individual spaghetti trajectories + population mean + observed BAG
 # ---------------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(11, 6))
+fig, ax = plt.subplots(figsize=(12, 7))
 
-# Population mean prediction ± 95% CI of the mean
+# Individual predicted trajectories (spaghetti)
+for ptid, subj in ensemble.groupby('PTID'):
+    subj = subj.sort_values('time_months')
+    ax.plot(subj['time_months'], subj['predicted_value'],
+            color=TRAJ_COLOR, lw=0.6, alpha=0.15, zorder=1)
+
+# Population mean prediction ± 95% CI of the mean (on top)
 pop = (ensemble.groupby('time_months')['predicted_value']
        .agg(['mean', 'std', 'count'])
        .reset_index())
@@ -136,17 +142,12 @@ pop['se']    = pop['std'] / np.sqrt(pop['count'])
 pop['ci_lo'] = pop['mean'] - 1.96 * pop['se']
 pop['ci_hi'] = pop['mean'] + 1.96 * pop['se']
 
+ax.fill_between(pop['time_months'], pop['ci_lo'], pop['ci_hi'],
+                alpha=0.30, color='gray', zorder=2, label='95% CI (population mean)')
 ax.plot(pop['time_months'], pop['mean'], 'k-', lw=2.5,
         label='Population mean prediction', zorder=3)
-ax.fill_between(pop['time_months'], pop['ci_lo'], pop['ci_hi'],
-                alpha=0.20, color='gray', label='95% CI (population mean)')
 
-# Mean model uncertainty band (average GP CI across subjects)
-unc = ensemble.groupby('time_months')[['lower_bound', 'upper_bound']].mean().reset_index()
-ax.fill_between(unc['time_months'], unc['lower_bound'], unc['upper_bound'],
-                alpha=0.10, color='steelblue', label='Mean prediction interval')
-
-# Observed BAG: mean ± 95% CI across subjects at each measured timepoint
+# Observed BAG: mean ± 95% CI at each measured timepoint
 real_obs = ensemble[ensemble['real_BAG'].notna()].copy()
 if len(real_obs) > 0:
     obs_agg = (real_obs.groupby('time_months')['real_BAG']
@@ -160,7 +161,8 @@ if len(real_obs) > 0:
 
 ax.set_xlabel('Time (months)', fontsize=13)
 ax.set_ylabel('BAG (years)', fontsize=13)
-ax.set_title('ACCORD: Population BAG Trajectory — 8-Year Prediction', fontsize=14)
+ax.set_title('ACCORD: Individual and Population BAG Trajectories — 8-Year Prediction',
+             fontsize=14)
 ax.set_xticks(timepoints)
 ax.set_xticklabels([f'{t}m\n({t//12}yr)' if t > 0 else '0m\n(baseline)'
                     for t in timepoints], fontsize=9)
@@ -188,15 +190,20 @@ for ax, sex_label in zip(axes, ['Male', 'Female']):
     pop_s['ci_lo'] = pop_s['mean'] - 1.96 * pop_s['se']
     pop_s['ci_hi'] = pop_s['mean'] + 1.96 * pop_s['se']
 
-    c = sex_colors[sex_label]
-    ax.plot(pop_s['time_months'], pop_s['mean'], '-', color=c, lw=2.5,
-            label='Mean prediction')
+    # Individual spaghetti per sex panel
+    for ptid, subj_s in sub.groupby('PTID'):
+        subj_s = subj_s.sort_values('time_months')
+        ax.plot(subj_s['time_months'], subj_s['predicted_value'],
+                color=TRAJ_COLOR, lw=0.6, alpha=0.15, zorder=1)
+
+    ax.plot(pop_s['time_months'], pop_s['mean'], '-', color='black', lw=2.5,
+            label='Mean prediction', zorder=3)
     ax.fill_between(pop_s['time_months'], pop_s['ci_lo'], pop_s['ci_hi'],
-                    alpha=0.25, color=c, label='95% CI (mean)')
+                    alpha=0.25, color='gray', label='95% CI (mean)', zorder=2)
 
     unc_s = sub.groupby('time_months')[['lower_bound', 'upper_bound']].mean().reset_index()
     ax.fill_between(unc_s['time_months'], unc_s['lower_bound'], unc_s['upper_bound'],
-                    alpha=0.10, color=c, label='Mean prediction interval')
+                    alpha=0.10, color=TRAJ_COLOR, label='Mean prediction interval', zorder=2)
 
     real_s = sub[sub['real_BAG'].notna()]
     if len(real_s) > 0:
@@ -253,12 +260,11 @@ for ax, ptid in zip(axes_flat, sample_ptids):
     subj = ensemble[ensemble['PTID'] == ptid].sort_values('time_months')
     sex_label = subj['Sex_label'].iloc[0] if not subj['Sex_label'].isna().all() else 'Unknown'
     age_val   = subj['Age_years'].iloc[0]
-    c = sex_colors.get(sex_label, 'gray')
 
-    ax.plot(subj['time_months'], subj['predicted_value'], '-', color=c, lw=2,
+    ax.plot(subj['time_months'], subj['predicted_value'], '-', color=TRAJ_COLOR, lw=2,
             label='Predicted')
     ax.fill_between(subj['time_months'], subj['lower_bound'], subj['upper_bound'],
-                    alpha=0.25, color=c, label='95% CI')
+                    alpha=0.25, color=TRAJ_COLOR, label='95% CI')
 
     real = subj[subj['real_BAG'].notna()]
     if len(real) > 0:
