@@ -63,8 +63,15 @@ print(f'Total acquisitions: {data.shape[0]}')
 # ---------------------------------------------------------------------------
 # 4. Compute BAG = SPARE_BA - Age  (before normalization)
 # ---------------------------------------------------------------------------
-data['BAG'] = data['SPARE_BA'] - data['Age.x']
-print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
+if 'SPARE_BA' in data.columns and data['SPARE_BA'].notna().any():
+    data['BAG'] = data['SPARE_BA'] - data['Age.x']
+    print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
+    _bag_available = True
+else:
+    # SPARE_BA not computed for this dataset; initialize BAG column to NaN
+    # It will be set to 0 (normalized population mean) after normalization stats load
+    data['BAG'] = np.nan
+    print('WARNING: SPARE_BA not available — BAG will be set to population mean (0 in normalized scale)')
 
 # ---------------------------------------------------------------------------
 # 5. Normalize MUSE volumes using pre-computed training stats
@@ -98,10 +105,16 @@ mean_bag = norm_stats['BAG']['mean']
 std_bag  = norm_stats['BAG']['std']
 
 data['Age.x'] = (data['Age.x'] - mean_age) / std_age
-data['BAG'] = (data['BAG'] - mean_bag) / std_bag
+
+if data['BAG'].isna().all():
+    # No SPARE_BA available: use 0 in normalized scale = population mean BAG
+    data['BAG'] = 0.0
+    print(f'BAG set to 0 (normalized population mean={mean_bag:.2f}, std={std_bag:.2f})')
+else:
+    data['BAG'] = (data['BAG'] - mean_bag) / std_bag
+    print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 
 print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
-print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 
 # ---------------------------------------------------------------------------
 # 7. Encode categorical variables (matching training pipeline)
