@@ -278,7 +278,7 @@ data_unnorm = data.copy()
 # ---------------------------------------------------------------------------
 subjects_df_hmuse = data.filter(regex=r'^MUSE_')
 
-muse_pkl = data_dir + '145_MUSE_allstudies_mean_std_hmuse.pkl'
+muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
 if not os.path.exists(muse_pkl):
     raise FileNotFoundError(
         f'{muse_pkl} not found. Run compute_combined_normalization_stats.py first.')
