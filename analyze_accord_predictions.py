@@ -79,8 +79,13 @@ accord_data['PTID'] = accord_data['PTID'].astype(str)
 
 with open(args.norm_stats, 'rb') as f:
     norm_stats = pickle.load(f)
+
+
+print(norm_stats)
 mean_age = norm_stats['Age']['mean']
 std_age  = norm_stats['Age']['std']
+
+
 
 # Per-subject baseline demographics (Time == 0)
 demo = (accord_data[accord_data['Time'] == 0]
