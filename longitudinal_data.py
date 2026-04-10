@@ -268,6 +268,9 @@ for pt in data['PTID'].unique():
 # Time in months (ceiling division)
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
+# Convert Delta_Baseline from days to months
+data['Delta_Baseline'] = data['Delta_Baseline'] / 30
+
 # Remove duplicate Time entries per subject
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
