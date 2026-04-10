@@ -93,6 +93,24 @@ test_y = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
 accord_test_x = accord_test_data['X']
 accord_test_y = accord_test_data['Y']
 
+# Extract per-sample metadata for ACCORD predictions (before tensor conversion)
+accord_ptids_list = accord_test_data['PTID'].tolist()
+accord_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in accord_test_data['X']]
+
+# Process ACCORD data from string representation to tensors
+accord_x_data = []
+for x_str in accord_test_data['X']:
+    a = x_str.strip('][').split(', ')
+    accord_x_data.append(np.expand_dims(np.array([float(v) for v in a]), 0))
+
+accord_y_data = []
+for y_str in accord_test_data['Y']:
+    a = y_str.strip('][').split(', ')
+    accord_y_data.append(np.expand_dims(np.array([float(v) for v in a]), 0))
+
+accord_test_x = torch.Tensor(np.concatenate(accord_x_data, axis=0))
+accord_test_y = torch.Tensor(np.concatenate(accord_y_data, axis=0))
+
 # Extract per-sample metadata for prediction tracking (before tensor conversion)
 test_data_raw = datasamples[datasamples['PTID'].isin(test_ids)]
 test_ptids_list = test_data_raw['PTID'].tolist()
@@ -221,6 +239,95 @@ print(f"Coverage: {np.mean(coverage):.4f}")
 print(f"Interval Width: {mean_interval_width:.4f}")
 
 # ------------------------------------------------------------------
+# ACCORD Inference
+# ------------------------------------------------------------------
+with torch.no_grad(), gpytorch.settings.fast_pred_var():
+    accord_f_preds = deepkernelmodel(accord_test_x)
+    accord_y_preds = likelihood(accord_f_preds)
+    accord_mean = accord_y_preds.mean
+    accord_variance = accord_y_preds.variance
+    accord_lower, accord_upper = accord_y_preds.confidence_region()
+
+# Calculate ACCORD metrics
+accord_mae = mean_absolute_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+accord_mse = mean_squared_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+accord_rmse = np.sqrt(accord_mse)
+accord_rsq = r2_score(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+
+accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = calc_coverage(
+    predictions=accord_mean.cpu().detach().numpy(),
+    groundtruth=accord_test_y.cpu().detach().numpy(),
+    intervals=[accord_lower.cpu().detach().numpy(), accord_upper.cpu().detach().numpy()]
+)
+accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = (
+    accord_coverage.numpy().astype(int),
+    accord_interval_width.numpy(),
+    accord_mean_coverage.numpy(),
+    accord_mean_interval_width.numpy()
+)
+
+print(f"\nACCORD Results for Biomarker {biomarker_name}:")
+print(f"MAE: {accord_mae:.4f}")
+print(f"MSE: {accord_mse:.4f}")
+print(f"RMSE: {accord_rmse:.4f}")
+print(f"R²: {accord_rsq:.4f}")
+print(f"Coverage: {np.mean(accord_coverage):.4f}")
+print(f"Interval Width: {accord_mean_interval_width:.4f}")
+
+# ACCORD per-sample predictions DataFrame
+accord_test_y_np   = accord_test_y.cpu().detach().numpy()
+accord_mean_np     = accord_mean.cpu().detach().numpy()
+accord_lower_np    = accord_lower.cpu().detach().numpy()
+accord_upper_np    = accord_upper.cpu().detach().numpy()
+accord_variance_np = accord_variance.cpu().detach().numpy()
+accord_interval_np = accord_upper_np - accord_lower_np
+accord_abs_error   = np.abs(accord_test_y_np - accord_mean_np)
+accord_sq_error    = (accord_test_y_np - accord_mean_np) ** 2
+
+accord_predictions_df = pd.DataFrame({
+    'PTID':           accord_ptids_list,
+    'time_months':    accord_time_list,
+    'ground_truth':   accord_test_y_np,
+    'predicted':      accord_mean_np,
+    'lower_bound':    accord_lower_np,
+    'upper_bound':    accord_upper_np,
+    'variance':       accord_variance_np,
+    'interval_width': accord_interval_np,
+    'abs_error':      accord_abs_error,
+    'squared_error':  accord_sq_error,
+    'covered':        accord_coverage.astype(int),
+})
+
+accord_predictions_filename = os.path.join(output_dir, f'accord_predictions_{biomarker_name}_{biomarker_index}_{fold}.csv')
+accord_predictions_df.to_csv(accord_predictions_filename, index=False)
+print(f"ACCORD per-sample predictions saved to {accord_predictions_filename}")
+
+# ACCORD per-subject aggregated metrics
+accord_subject_metrics = (
+    accord_predictions_df.groupby('PTID')
+    .agg(
+        n_timepoints        = ('ground_truth', 'count'),
+        mae                 = ('abs_error', 'mean'),
+        mse                 = ('squared_error', 'mean'),
+        coverage_rate       = ('covered', 'mean'),
+        mean_interval_width = ('interval_width', 'mean'),
+        mean_predicted      = ('predicted', 'mean'),
+        mean_ground_truth   = ('ground_truth', 'mean'),
+    )
+    .reset_index()
+)
+accord_subject_metrics['rmse'] = np.sqrt(accord_subject_metrics['mse'])
+
+accord_subject_metrics_filename = os.path.join(output_dir, f'accord_subject_metrics_{biomarker_name}_{biomarker_index}_{fold}.csv')
+accord_subject_metrics.to_csv(accord_subject_metrics_filename, index=False)
+print(f"ACCORD per-subject metrics saved to {accord_subject_metrics_filename}")
+
+print(f"\nACCORD per-subject metric summary (n={len(accord_subject_metrics)} subjects):")
+print(f"  MAE  — mean: {accord_subject_metrics['mae'].mean():.4f}, median: {accord_subject_metrics['mae'].median():.4f}")
+print(f"  RMSE — mean: {accord_subject_metrics['rmse'].mean():.4f}")
+print(f"  Coverage — mean: {accord_subject_metrics['coverage_rate'].mean():.4f}")
+
+# ------------------------------------------------------------------
 # Per-sample predictions DataFrame
 # ------------------------------------------------------------------
 test_y_np      = test_y.cpu().detach().numpy()
@@ -315,6 +422,16 @@ results = {
     'subject_metrics_file': subject_metrics_filename,
     'n_test_subjects': int(len(test_ids)),
     'n_test_observations': int(len(predictions_df)),
+    'accord_mae': float(accord_mae),
+    'accord_mse': float(accord_mse),
+    'accord_rmse': float(accord_rmse),
+    'accord_r2': float(accord_rsq),
+    'accord_coverage': float(np.mean(accord_coverage)),
+    'accord_interval_width': float(accord_mean_interval_width),
+    'accord_predictions_file': accord_predictions_filename,
+    'accord_subject_metrics_file': accord_subject_metrics_filename,
+    'n_accord_subjects': int(accord_test_data['PTID'].nunique()),
+    'n_accord_observations': int(len(accord_predictions_df)),
 }
 
 results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}_{biomarker_index}_{fold}.json')
@@ -322,8 +439,4 @@ with open(results_filename, 'w') as f:
     json.dump(results, f, indent=2)
 
 print(f"\nModel and results saved to {output_dir}")
-print(f"Training completed in {time.time() - t0:.2f} seconds") 
-
-
-# TODO: Add the inference for the accord_test_x, store the predictions with the real values too and save the evalueation metrics. 
-# Add also print statements to see how the accord performance is 
+print(f"Training completed in {time.time() - t0:.2f} seconds")
