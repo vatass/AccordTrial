@@ -22,7 +22,11 @@ parser.add_argument("--biomarker_name", help="biomarker name for inference", typ
 parser.add_argument("--output_file", help="Path to save inference results CSV", required=True)
 parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG, SPARE_BA)", required=True)
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
+<<<<<<< HEAD
 parser.add_argument("--stats_dir", help="Directory containing normalization stats files", default="./data")
+=======
+parser.add_argument("--norm_stats_dir", help="Directory containing normalization stats pickle files (normalization_stats.pkl, dlmuse_rois_mean_std.pkl, etc.)", required=True)
+>>>>>>> origin/claude/store-accord-predictions-jGASZ
 
 args = parser.parse_args()
 
@@ -33,7 +37,7 @@ data_file = args.data_file
 model_file = args.model_file
 output_file = args.output_file
 biomarker = args.biomarker.upper()
-stats_dir = args.stats_dir
+stats_dir = args.norm_stats_dir
 
 # Define future time points (8 years = 96 months, every 12 months)
 future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
@@ -112,6 +116,7 @@ test_data = test_data.loc[:, ~test_data.columns.str.contains('^Unnamed')]
 
 print('Columns: ', test_data.columns)
 
+
 # For each subject, extract only the first (baseline) row so that
 # baseline_ptids[i] and baseline_data[i] are guaranteed to correspond.
 # Taking all rows and indexing by enumerate(unique_ptids) breaks the
@@ -169,6 +174,9 @@ def load_target_stats(biomarker, roi_idx, stats_dir):
         return _unpack(_load(os.path.join(stats_dir, 'mmse_mean_std.pkl')))
     elif biomarker == 'ADAS':
         return _unpack(_load(os.path.join(stats_dir, 'adas_mean_std.pkl')))
+    elif biomarker == 'BAG':
+        stats = _load(os.path.join(stats_dir, 'normalization_stats.pkl'))
+        return float(stats['BAG']['mean']), float(stats['BAG']['std'])
     else:
         raise ValueError(f"Unknown biomarker: {biomarker}")
 
@@ -257,6 +265,19 @@ for time_point in future_timepoints:
 
 # Create results DataFrame
 results_df = pd.DataFrame(all_results)
+
+# Add real_BAG: merge actual observed BAG values from the source data at
+# matching timepoints (NaN for timepoints with no real observation).
+ptid_col = 'PTID' if 'PTID' in test_data.columns else 'PTID.x'
+if 'BAG' in test_data.columns and 'Time' in test_data.columns:
+    obs = test_data[[ptid_col, 'Time', 'BAG']].copy()
+    obs[ptid_col] = obs[ptid_col].astype(str)
+    if denormalize:
+        obs['BAG'] = obs['BAG'] * target_std + target_mean
+    obs = obs.rename(columns={ptid_col: 'PTID', 'Time': 'time_months', 'BAG': 'real_BAG'})
+    results_df = results_df.merge(obs, on=['PTID', 'time_months'], how='left')
+else:
+    results_df['real_BAG'] = np.nan
 
 # Add summary statistics
 print(f"\n=== Summary Statistics ===")
