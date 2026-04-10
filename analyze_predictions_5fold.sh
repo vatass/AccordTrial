@@ -49,50 +49,50 @@ for FOLD in 0 1 2 3 4; do
     echo "  Fold ${FOLD} done."
 done
 
-echo ""
-echo "============================================="
-echo "  Analyzing predictions for: SPARE-BA"
-echo "============================================="
+# echo ""
+# echo "============================================="
+# echo "  Analyzing predictions for: SPARE-BA"
+# echo "============================================="
 
-BIOMARKER_NAME="SPARE-BA"
-BIOMARKER_INDEX=0
-COVARIATES_FILE_SPAREBA="data/longitudinal_covariates_spare_ba_allstudies.csv"
+# BIOMARKER_NAME="SPARE-BA"
+# BIOMARKER_INDEX=0
+# COVARIATES_FILE_SPAREBA="data/longitudinal_covariates_spare_ba_allstudies.csv"
 
-# Fall back to BAG covariates file if SPARE-BA specific one is absent
-if [ ! -f "${COVARIATES_FILE_SPAREBA}" ]; then
-    echo "  NOTE: ${COVARIATES_FILE_SPAREBA} not found — using BAG covariates file"
-    COVARIATES_FILE_SPAREBA="${COVARIATES_FILE}"
-fi
+# # Fall back to BAG covariates file if SPARE-BA specific one is absent
+# if [ ! -f "${COVARIATES_FILE_SPAREBA}" ]; then
+#     echo "  NOTE: ${COVARIATES_FILE_SPAREBA} not found — using BAG covariates file"
+#     COVARIATES_FILE_SPAREBA="${COVARIATES_FILE}"
+# fi
 
-for FOLD in 0 1 2 3 4; do
-    PREDICTIONS_FILE="models/spare_ba_fold${FOLD}/predictions_${BIOMARKER_NAME}_${BIOMARKER_INDEX}_${FOLD}.csv"
-    OUTPUT_DIR="analysis/spare_ba_fold${FOLD}"
+# for FOLD in 0 1 2 3 4; do
+#     PREDICTIONS_FILE="models/spare_ba_fold${FOLD}/predictions_${BIOMARKER_NAME}_${BIOMARKER_INDEX}_${FOLD}.csv"
+#     OUTPUT_DIR="analysis/spare_ba_fold${FOLD}"
 
-    echo ""
-    echo "--- Fold ${FOLD} ---"
-    echo "  Predictions : ${PREDICTIONS_FILE}"
-    echo "  Output      : ${OUTPUT_DIR}"
+#     echo ""
+#     echo "--- Fold ${FOLD} ---"
+#     echo "  Predictions : ${PREDICTIONS_FILE}"
+#     echo "  Output      : ${OUTPUT_DIR}"
 
-    if [ ! -f "${PREDICTIONS_FILE}" ]; then
-        echo "  WARNING: ${PREDICTIONS_FILE} not found — skipping fold ${FOLD}"
-        continue
-    fi
+#     if [ ! -f "${PREDICTIONS_FILE}" ]; then
+#         echo "  WARNING: ${PREDICTIONS_FILE} not found — skipping fold ${FOLD}"
+#         continue
+#     fi
 
-    python analyze_predictions.py \
-        --predictions_file      "${PREDICTIONS_FILE}" \
-        --covariates_file       "${COVARIATES_FILE_SPAREBA}" \
-        --normalization_stats_file "${NORM_STATS}" \
-        --output_dir            "${OUTPUT_DIR}" \
-        --biomarker_name        "${BIOMARKER_NAME}" \
-        --n_traj_subjects       ${N_TRAJ} \
-        --min_timepoints        ${MIN_TP}
+#     python analyze_predictions.py \
+#         --predictions_file      "${PREDICTIONS_FILE}" \
+#         --covariates_file       "${COVARIATES_FILE_SPAREBA}" \
+#         --normalization_stats_file "${NORM_STATS}" \
+#         --output_dir            "${OUTPUT_DIR}" \
+#         --biomarker_name        "${BIOMARKER_NAME}" \
+#         --n_traj_subjects       ${N_TRAJ} \
+#         --min_timepoints        ${MIN_TP}
 
-    echo "  Fold ${FOLD} done."
-done
+#     echo "  Fold ${FOLD} done."
+# done
 
-echo ""
-echo "============================================="
-echo "  All analysis complete."
-echo "  BAG outputs    : analysis/bag_fold{0-4}/"
-echo "  SPARE-BA outputs: analysis/spare_ba_fold{0-4}/"
-echo "============================================="
+# echo ""
+# echo "============================================="
+# echo "  All analysis complete."
+# echo "  BAG outputs    : analysis/bag_fold{0-4}/"
+# echo "  SPARE-BA outputs: analysis/spare_ba_fold{0-4}/"
+# echo "============================================="
