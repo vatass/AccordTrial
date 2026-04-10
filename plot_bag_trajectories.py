@@ -27,9 +27,13 @@ MIN_TIMEPOINTS  = 3    # minimum visits for a subject to appear in trajectories
 # ---------------------------------------------------------------------------
 # Load data & denormalize BAG
 # ---------------------------------------------------------------------------
+<<<<<<< Updated upstream
 df = pd.read_csv(data_dir + 'data_bag_allstudies.csv', low_memory=False)
 df['PTID'] = df['PTID'].astype(str)
 df = df.sort_values(['PTID', 'Time'])
+=======
+df = pd.read_csv(data_dir + 'data_bag_allstudies.csv')
+>>>>>>> Stashed changes
 
 # Denormalize if normalization stats exist, otherwise treat columns as already raw
 try:
