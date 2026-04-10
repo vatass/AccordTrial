@@ -1,5 +1,5 @@
 '''
-Population DKGP Model Training 
+Population DKGP Model Training
 '''
 
 import pandas as pd
@@ -13,10 +13,11 @@ from models import SingleTaskDeepKernel
 import argparse
 import json
 import time
+import logging
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 parser = argparse.ArgumentParser(description='Temporal Deep Kernel Single Task GP model for a Biomarker')
-## Production Parameters 
+## Production Parameters
 parser.add_argument("--data_file", help="Path to the data CSV file", required=True)
 parser.add_argument("--train_ids_file", help="Path to the train IDs pickle file", required=True)
 parser.add_argument("--test_ids_file", help="Path to the test IDs pickle file", required=True)
@@ -47,26 +48,39 @@ output_dir = args.output_dir
 import os
 os.makedirs(output_dir, exist_ok=True)
 
+# Set up logging to both console and file
+log_filename = os.path.join(output_dir, f'training_{biomarker_name}_{biomarker_index}_{fold}.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.info(f"Log file: {log_filename}")
+
 # Load data
-print(f"Loading data from {data_file}")
+logger.info(f"Loading data from {data_file}")
 datasamples = pd.read_csv(data_file)
-subject_ids = list(datasamples['PTID'].unique()) 
-print(f"Loaded {len(subject_ids)} subjects")
+subject_ids = list(datasamples['PTID'].unique())
+logger.info(f"Loaded {len(subject_ids)} subjects")
 
 accord_test_data = pd.read_csv('./data/subjectsamples_bag_accord.csv')
 
 # Load train/test split
-print(f"Loading train IDs from {train_ids_file}")
+logger.info(f"Loading train IDs from {train_ids_file}")
 with open(train_ids_file, "rb") as openfile:
     train_ids = []
     while True:
         try:
             train_ids.append(pickle.load(openfile))
         except EOFError:
-            break 
+            break
 train_ids = train_ids[0]
 
-print(f"Loading test IDs from {test_ids_file}")
+logger.info(f"Loading test IDs from {test_ids_file}")
 with open(test_ids_file, "rb") as openfile:
     test_ids = []
     while True:
@@ -76,12 +90,12 @@ with open(test_ids_file, "rb") as openfile:
             break
 test_ids = test_ids[0]
 
-print(f'Train IDs: {len(train_ids)}')
-print(f'Test IDs: {len(test_ids)}')
+logger.info(f'Train IDs: {len(train_ids)}')
+logger.info(f'Test IDs: {len(test_ids)}')
 
 # Verify no overlap
-for t in test_ids: 
-    if t in train_ids: 
+for t in test_ids:
+    if t in train_ids:
         raise ValueError('Test Samples belong to the train!')
 
 # Prepare data
@@ -117,63 +131,63 @@ test_ptids_list = test_data_raw['PTID'].tolist()
 # Time is the last element of the feature vector in X
 test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_data_raw['X']]
 
-print('Train data shape:', train_x.shape)
-print('Test data shape:', test_x.shape)
+logger.info(f'Train data shape: {train_x.shape}')
+logger.info(f'Test data shape: {test_x.shape}')
 # Process data
 train_x, train_y, test_x, test_y = process_temporal_singletask_data(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
 
 # Move to GPU if available
 if torch.cuda.is_available():
-    train_x = train_x.cuda(gpu_id) 
+    train_x = train_x.cuda(gpu_id)
     train_y = train_y.cuda(gpu_id)
-    test_x = test_x.cuda(gpu_id) 
+    test_x = test_x.cuda(gpu_id)
     test_y = test_y.cuda(gpu_id)
 
     accord_test_x = accord_test_x.cuda(gpu_id)
     accord_test_y = accord_test_y.cuda(gpu_id)
 
-print('Processed Train Data:', train_x.shape)
-print('Processed Test Data:', test_x.shape)
+logger.info(f'Processed Train Data: {train_x.shape}')
+logger.info(f'Processed Test Data: {test_x.shape}')
 
-print('Processed ACCORD Test Data:', accord_test_x.shape)
-print('Processed ACCORD Test Data:', accord_test_y.shape)
+logger.info(f'Processed ACCORD Test Data: {accord_test_x.shape}')
+logger.info(f'Processed ACCORD Test Data: {accord_test_y.shape}')
 
 
-print("\n=== FEATURE VERIFICATION ===")
-print(f"Number of features in training data: {train_x.shape[1]}")
-print(f"Number of features in accord test data: {accord_test_x.shape[1]}")
-print("=== END VERIFICATION ===\n")
+logger.info("=== FEATURE VERIFICATION ===")
+logger.info(f"Number of features in training data: {train_x.shape[1]}")
+logger.info(f"Number of features in accord test data: {accord_test_x.shape[1]}")
+logger.info("=== END VERIFICATION ===")
 
 # Select ROI
 test_y = test_y[:, biomarker_index]
 train_y = train_y[:, biomarker_index]
 accord_test_y = accord_test_y[:, biomarker_index]
-train_y = train_y.squeeze() 
+train_y = train_y.squeeze()
 test_y = test_y.squeeze()
-accord_test_y = accord_test_y.squeeze() 
+accord_test_y = accord_test_y.squeeze()
 
 
 # Define model with fixed architecture
 depth = [(train_x.shape[1], int(train_x.shape[1]/2))]
 likelihood = gpytorch.likelihoods.GaussianLikelihood()
 deepkernelmodel = SingleTaskDeepKernel(
-    input_dim=train_x.shape[1], 
-    train_x=train_x, 
-    train_y=train_y, 
-    likelihood=likelihood, 
-    depth=depth, 
-    dropout=0.2, 
-    activation='relu', 
-    kernel_choice='RBF', 
+    input_dim=train_x.shape[1],
+    train_x=train_x,
+    train_y=train_y,
+    likelihood=likelihood,
+    depth=depth,
+    dropout=0.2,
+    activation='relu',
+    kernel_choice='RBF',
     mean='Constant',
-    pretrained=False, 
-    feature_extractor=None, 
-    latent_dim=int(train_x.shape[1]/2), 
+    pretrained=False,
+    feature_extractor=None,
+    latent_dim=int(train_x.shape[1]/2),
     gphyper=None
-) 
+)
 
-if torch.cuda.is_available(): 
-    likelihood = likelihood.cuda(gpu_id) 
+if torch.cuda.is_available():
+    likelihood = likelihood.cuda(gpu_id)
     deepkernelmodel = deepkernelmodel.cuda(gpu_id)
 
 # Training setup
@@ -192,7 +206,7 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
 iterations = 1000
-print(f"Training for {iterations} iterations...")
+logger.info(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()
     likelihood.train()
@@ -201,9 +215,9 @@ for i in range(iterations):
     loss = -mll(output, train_y)
     loss.backward()
     optimizer.step()
-    
+
     if (i+1) % 50 == 0:
-        print(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
+        logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
 
 # Evaluation
 deepkernelmodel.eval()
@@ -220,23 +234,23 @@ with torch.no_grad(), gpytorch.settings.fast_pred_var():
 mae_pop = mean_absolute_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
 mse_pop = mean_squared_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
 rmse_pop = np.sqrt(mse_pop)
-rsq = r2_score(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy()) 
+rsq = r2_score(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
 
 coverage, interval_width, mean_coverage, mean_interval_width = calc_coverage(
-    predictions=mean.cpu().detach().numpy(), 
+    predictions=mean.cpu().detach().numpy(),
     groundtruth=test_y.cpu().detach().numpy(),
     intervals=[lower.cpu().detach().numpy(), upper.cpu().detach().numpy()]
-)  
+)
 
 coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy()
 
-print(f"\nResults for Biomarker {biomarker_name}:")
-print(f"MAE: {mae_pop:.4f}")
-print(f"MSE: {mse_pop:.4f}")
-print(f"RMSE: {rmse_pop:.4f}")
-print(f"R²: {rsq:.4f}")
-print(f"Coverage: {np.mean(coverage):.4f}")
-print(f"Interval Width: {mean_interval_width:.4f}")
+logger.info(f"Results for Biomarker {biomarker_name}:")
+logger.info(f"MAE: {mae_pop:.4f}")
+logger.info(f"MSE: {mse_pop:.4f}")
+logger.info(f"RMSE: {rmse_pop:.4f}")
+logger.info(f"R²: {rsq:.4f}")
+logger.info(f"Coverage: {np.mean(coverage):.4f}")
+logger.info(f"Interval Width: {mean_interval_width:.4f}")
 
 # ------------------------------------------------------------------
 # ACCORD Inference
@@ -266,13 +280,13 @@ accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interv
     accord_mean_interval_width.numpy()
 )
 
-print(f"\nACCORD Results for Biomarker {biomarker_name}:")
-print(f"MAE: {accord_mae:.4f}")
-print(f"MSE: {accord_mse:.4f}")
-print(f"RMSE: {accord_rmse:.4f}")
-print(f"R²: {accord_rsq:.4f}")
-print(f"Coverage: {np.mean(accord_coverage):.4f}")
-print(f"Interval Width: {accord_mean_interval_width:.4f}")
+logger.info(f"ACCORD Results for Biomarker {biomarker_name}:")
+logger.info(f"MAE: {accord_mae:.4f}")
+logger.info(f"MSE: {accord_mse:.4f}")
+logger.info(f"RMSE: {accord_rmse:.4f}")
+logger.info(f"R²: {accord_rsq:.4f}")
+logger.info(f"Coverage: {np.mean(accord_coverage):.4f}")
+logger.info(f"Interval Width: {accord_mean_interval_width:.4f}")
 
 # ACCORD per-sample predictions DataFrame
 accord_test_y_np   = accord_test_y.cpu().detach().numpy()
@@ -300,7 +314,7 @@ accord_predictions_df = pd.DataFrame({
 
 accord_predictions_filename = os.path.join(output_dir, f'accord_predictions_{biomarker_name}_{biomarker_index}_{fold}.csv')
 accord_predictions_df.to_csv(accord_predictions_filename, index=False)
-print(f"ACCORD per-sample predictions saved to {accord_predictions_filename}")
+logger.info(f"ACCORD per-sample predictions saved to {accord_predictions_filename}")
 
 # ACCORD per-subject aggregated metrics
 accord_subject_metrics = (
@@ -320,12 +334,12 @@ accord_subject_metrics['rmse'] = np.sqrt(accord_subject_metrics['mse'])
 
 accord_subject_metrics_filename = os.path.join(output_dir, f'accord_subject_metrics_{biomarker_name}_{biomarker_index}_{fold}.csv')
 accord_subject_metrics.to_csv(accord_subject_metrics_filename, index=False)
-print(f"ACCORD per-subject metrics saved to {accord_subject_metrics_filename}")
+logger.info(f"ACCORD per-subject metrics saved to {accord_subject_metrics_filename}")
 
-print(f"\nACCORD per-subject metric summary (n={len(accord_subject_metrics)} subjects):")
-print(f"  MAE  — mean: {accord_subject_metrics['mae'].mean():.4f}, median: {accord_subject_metrics['mae'].median():.4f}")
-print(f"  RMSE — mean: {accord_subject_metrics['rmse'].mean():.4f}")
-print(f"  Coverage — mean: {accord_subject_metrics['coverage_rate'].mean():.4f}")
+logger.info(f"ACCORD per-subject metric summary (n={len(accord_subject_metrics)} subjects):")
+logger.info(f"  MAE  — mean: {accord_subject_metrics['mae'].mean():.4f}, median: {accord_subject_metrics['mae'].median():.4f}")
+logger.info(f"  RMSE — mean: {accord_subject_metrics['rmse'].mean():.4f}")
+logger.info(f"  Coverage — mean: {accord_subject_metrics['coverage_rate'].mean():.4f}")
 
 # ------------------------------------------------------------------
 # Per-sample predictions DataFrame
@@ -365,12 +379,12 @@ if args.covariates_file and os.path.exists(args.covariates_file):
                           .reset_index()[['PTID', 'Sex', 'Age']]
                           .rename(columns={'Age': 'BaselineAge'}))
     predictions_df = predictions_df.merge(baseline_cov, on='PTID', how='left')
-    print(f"Covariates merged: Sex/BaselineAge added for {predictions_df['Sex'].notna().sum()} observations")
+    logger.info(f"Covariates merged: Sex/BaselineAge added for {predictions_df['Sex'].notna().sum()} observations")
 
 # Save per-sample predictions
 predictions_filename = os.path.join(output_dir, f'predictions_{biomarker_name}_{biomarker_index}_{fold}.csv')
 predictions_df.to_csv(predictions_filename, index=False)
-print(f"Per-sample predictions saved to {predictions_filename}")
+logger.info(f"Per-sample predictions saved to {predictions_filename}")
 
 # ------------------------------------------------------------------
 # Per-subject aggregated metrics
@@ -398,12 +412,12 @@ for col in ['Sex', 'BaselineAge']:
 
 subject_metrics_filename = os.path.join(output_dir, f'subject_metrics_{biomarker_name}_{biomarker_index}_{fold}.csv')
 subject_metrics.to_csv(subject_metrics_filename, index=False)
-print(f"Per-subject metrics saved to {subject_metrics_filename}")
+logger.info(f"Per-subject metrics saved to {subject_metrics_filename}")
 
-print(f"\nPer-subject metric summary (n={len(subject_metrics)} subjects):")
-print(f"  MAE  — mean: {subject_metrics['mae'].mean():.4f}, median: {subject_metrics['mae'].median():.4f}")
-print(f"  RMSE — mean: {subject_metrics['rmse'].mean():.4f}")
-print(f"  Coverage — mean: {subject_metrics['coverage_rate'].mean():.4f}")
+logger.info(f"Per-subject metric summary (n={len(subject_metrics)} subjects):")
+logger.info(f"  MAE  — mean: {subject_metrics['mae'].mean():.4f}, median: {subject_metrics['mae'].median():.4f}")
+logger.info(f"  RMSE — mean: {subject_metrics['rmse'].mean():.4f}")
+logger.info(f"  Coverage — mean: {subject_metrics['coverage_rate'].mean():.4f}")
 
 # Save model
 model_filename = os.path.join(output_dir, f'deep_kernel_gp_{biomarker_name}_{biomarker_index}_{fold}.pth')
@@ -438,5 +452,5 @@ results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}
 with open(results_filename, 'w') as f:
     json.dump(results, f, indent=2)
 
-print(f"\nModel and results saved to {output_dir}")
-print(f"Training completed in {time.time() - t0:.2f} seconds")
+logger.info(f"Model and results saved to {output_dir}")
+logger.info(f"Training completed in {time.time() - t0:.2f} seconds")
