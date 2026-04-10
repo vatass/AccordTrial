@@ -105,8 +105,9 @@ print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 # ---------------------------------------------------------------------------
 # 7. Encode categorical variables (matching training pipeline)
 # ---------------------------------------------------------------------------
-if data['Sex'].dtype == object:
-    data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
+sex_col = 'Sex.x' if 'Sex.x' in data.columns else 'Sex'
+if data[sex_col].dtype == object:
+    data[sex_col] = data[sex_col].replace({'M': 0, 'F': 1})
 
 if data['Education_Years'].dtype != int:
     data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
@@ -117,16 +118,20 @@ if data['Education_Years'].dtype != int:
 os.makedirs(data_dir, exist_ok=True)
 
 
+# Rename .x-suffixed columns to match training column names
+data = data.rename(columns={'PTID.x': 'PTID', 'Sex.x': 'Sex', 'Age.x': 'Age'})
+
+# Training feature vector: [MUSE_Volume_*, Sex, BAG, Time]
+# Delta_Baseline and Age are excluded — training removes Delta_Baseline explicitly
+# and BAG already encodes age (BAG = SPARE_BA - Age).
 muse_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
-keep_cols = muse_cols + ['Sex.x', 'Age.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
+keep_cols = muse_cols + ['Sex', 'BAG', 'PTID', 'Time']
 keep_cols = [c for c in keep_cols if c in data.columns]
 data = data[keep_cols]
-print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + meta columns')
+print(f'Kept {len(keep_cols)} columns: {len(muse_cols)} MUSE_Volume_* + Sex, BAG, PTID, Time')
 
-
-
-data['PTID.x'] = data['PTID.x'].astype(str)
+data['PTID'] = data['PTID'].astype(str)
 output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
 data.to_csv(output_path, index=False)
 print(f'Saved processed ACCORD data: {output_path}')
-print(f'Final shape: {data.shape}  ({data["PTID.x"].nunique()} subjects)')
+print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
