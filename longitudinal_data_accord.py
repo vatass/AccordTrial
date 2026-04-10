@@ -165,14 +165,21 @@ data = pd.read_csv('ACCORD_MARCH_enriched.csv')
 
 data['Date.x'] = data['Date.x'].astype('datetime64[ns]')
 
+# Sort by subject and visit date to ensure correct temporal ordering
+data = data.sort_values(['PTID.x', 'Date.x']).reset_index(drop=True)
+
 # Drop rows missing all H_MUSE ROIs
 hmuse = list(data.filter(regex=r'^MUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
 print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
-# 6. Fix Delta Baseline (first acquisition = 0)
+# 6. Compute Delta_Baseline: days from each subject's first acquisition date
 # ---------------------------------------------------------------------------
+
+data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(
+    lambda x: (x - x.min()).dt.days
+)
 
 def delta_baseline_fix(data):
     for pt in data['PTID.x'].unique():
