@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pickle
 from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.model_selection import StratifiedKFold, KFold
 
 
 def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse, genomic, followup, derivedroi,  visualize=False):
@@ -351,8 +352,8 @@ all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
 data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}data_bag_allstudies.csv')
+data.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+print(f'Saved: {data_dir}longitudinal_covariates_bag_allstudies.csv')
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
