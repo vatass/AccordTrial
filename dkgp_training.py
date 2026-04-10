@@ -53,6 +53,8 @@ datasamples = pd.read_csv(data_file)
 subject_ids = list(datasamples['PTID'].unique()) 
 print(f"Loaded {len(subject_ids)} subjects")
 
+accord_test_data = pd.read_csv('./data/subjectsamples_bag_accord.csv')
+
 # Load train/test split
 print(f"Loading train IDs from {train_ids_file}")
 with open(train_ids_file, "rb") as openfile:
@@ -88,6 +90,9 @@ train_y = datasamples[datasamples['PTID'].isin(train_ids)]['Y']
 test_x = datasamples[datasamples['PTID'].isin(test_ids)]['X']
 test_y = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
 
+accord_test_x = accord_test_data['X']
+accord_test_y = accord_test_data['Y']
+
 # Extract per-sample metadata for prediction tracking (before tensor conversion)
 test_data_raw = datasamples[datasamples['PTID'].isin(test_ids)]
 test_ptids_list = test_data_raw['PTID'].tolist()
@@ -106,18 +111,29 @@ if torch.cuda.is_available():
     test_x = test_x.cuda(gpu_id) 
     test_y = test_y.cuda(gpu_id)
 
+    accord_test_x = accord_test_x.cuda(gpu_id)
+    accord_test_y = accord_test_y.cuda(gpu_id)
+
 print('Processed Train Data:', train_x.shape)
 print('Processed Test Data:', test_x.shape)
 
+print('Processed ACCORD Test Data:', accord_test_x.shape)
+print('Processed ACCORD Test Data:', accord_test_y.shape)
+
+
 print("\n=== FEATURE VERIFICATION ===")
 print(f"Number of features in training data: {train_x.shape[1]}")
+print(f"Number of features in accord test data: {accord_test_x.shape[1]}")
 print("=== END VERIFICATION ===\n")
 
 # Select ROI
 test_y = test_y[:, biomarker_index]
 train_y = train_y[:, biomarker_index]
+accord_test_y = accord_test_y[:, biomarker_index]
 train_y = train_y.squeeze() 
 test_y = test_y.squeeze()
+accord_test_y = accord_test_y.squeeze() 
+
 
 # Define model with fixed architecture
 depth = [(train_x.shape[1], int(train_x.shape[1]/2))]
@@ -309,4 +325,5 @@ print(f"\nModel and results saved to {output_dir}")
 print(f"Training completed in {time.time() - t0:.2f} seconds") 
 
 
-
+# TODO: Add the inference for the accord_test_x, store the predictions with the real values too and save the evalueation metrics. 
+# Add also print statements to see how the accord performance is 
