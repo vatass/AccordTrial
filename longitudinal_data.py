@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pickle
 from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.model_selection import StratifiedKFold, KFold
 
 
 def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse, genomic, followup, derivedroi,  visualize=False):
@@ -277,14 +278,19 @@ print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
 data_unnorm = data.copy()
 
 # ---------------------------------------------------------------------------
-# 7. Z-score MUSE ROIs
+# 7. Z-score MUSE ROIs using pre-computed combined normalization stats
 # ---------------------------------------------------------------------------
 subjects_df_hmuse = data.filter(regex=r'^MUSE_')
-mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
-std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
-with open(data_dir + '145_MUSE_allstudies_mean_std_hmuse.pkl', 'wb') as f:
-    pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
+muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
+if not os.path.exists(muse_pkl):
+    raise FileNotFoundError(
+        f'{muse_pkl} not found. Run compute_combined_normalization_stats.py first.')
+print(f'Loading MUSE stats from: {muse_pkl}')
+with open(muse_pkl, 'rb') as f:
+    muse_stats = pickle.load(f)
+mean_hmuse = muse_stats['mean']
+std_hmuse  = muse_stats['std']
 
 for i, c in enumerate(subjects_df_hmuse.columns):
     data[c] = (subjects_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
@@ -310,33 +316,35 @@ data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 10. Normalize / encode clinical variables  (save all stats for later use)
+# 10. Normalize clinical variables using pre-computed combined stats
 # ---------------------------------------------------------------------------
-mean_age,     std_age     = data['Age'].mean(),     data['Age'].std()
-mean_spareba, std_spareba = data['SPARE_BA'].mean(), data['SPARE_BA'].std()
-mean_bag,     std_bag     = data['BAG'].mean(),      data['BAG'].std()
+norm_pkl = data_dir + 'normalization_stats.pkl'
+if not os.path.exists(norm_pkl):
+    raise FileNotFoundError(
+        f'{norm_pkl} not found. Run compute_combined_normalization_stats.py first.')
+print(f'Loading normalization stats from: {norm_pkl}')
+with open(norm_pkl, 'rb') as f:
+    normalization_stats = pickle.load(f)
 
-data['Age']     = (data['Age']     - mean_age)     / std_age
+mean_age     = normalization_stats['Age']['mean']
+std_age      = normalization_stats['Age']['std']
+mean_spareba = normalization_stats['SPARE_BA']['mean']
+std_spareba  = normalization_stats['SPARE_BA']['std']
+mean_bag     = normalization_stats['BAG']['mean']
+std_bag      = normalization_stats['BAG']['std']
+
+data['Age']      = (data['Age']      - mean_age)     / std_age
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
-data['BAG']     = (data['BAG']     - mean_bag)     / std_bag
+data['BAG']      = (data['BAG']      - mean_bag)     / std_bag
 
 data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
-# Persist normalization statistics for downstream scripts
-normalization_stats = {
-    'Age':      {'mean': mean_age,     'std': std_age},
-    'SPARE_BA': {'mean': mean_spareba, 'std': std_spareba},
-    'BAG':      {'mean': mean_bag,     'std': std_bag},
-}
-with open(data_dir + 'normalization_stats.pkl', 'wb') as f:
-    pickle.dump(normalization_stats, f)
-print('Normalization stats saved.')
 print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'Age', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -347,8 +355,8 @@ all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
 data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}data_bag_allstudies.csv')
+data.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+print(f'Saved: {data_dir}longitudinal_covariates_bag_allstudies.csv')
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle

@@ -20,9 +20,9 @@ parser.add_argument("--model_file", help="Path to the trained model file", requi
 parser.add_argument("--biomarker_index", help="biomarker index for inference", type=int, required=True)
 parser.add_argument("--biomarker_name", help="biomarker name for inference", type=str, required=True)
 parser.add_argument("--output_file", help="Path to save inference results CSV", required=True)
-parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG)", required=True)
+parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG, SPARE_BA)", required=True)
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
-parser.add_argument("--norm_stats_dir", help="Directory containing normalization stats pickle files (normalization_stats.pkl, dlmuse_rois_mean_std.pkl, etc.)", required=True)
+parser.add_argument("--stats_dir", help="Directory containing normalization stats pickle files (normalization_stats.pkl, dlmuse_rois_mean_std.pkl, etc.)", required=True)
 
 args = parser.parse_args()
 
@@ -33,7 +33,7 @@ data_file = args.data_file
 model_file = args.model_file
 output_file = args.output_file
 biomarker = args.biomarker.upper()
-stats_dir = args.norm_stats_dir
+stats_dir = args.stats_dir
 
 # Define future time points (8 years = 96 months, every 12 months)
 future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
@@ -155,18 +155,17 @@ def load_target_stats(biomarker, roi_idx, stats_dir):
         raise ValueError(f"Unexpected stats format: {type(obj)}")
 
     if biomarker == 'MUSE':
-        stats = _load(os.path.join(stats_dir, 'dlmuse_rois_mean_std.pkl'))
-
+        stats = _load(os.path.join(stats_dir, '145_MUSE_allstrudies_mean_std.pkl'))
         roi_col = muse_cols[roi_idx]
-    
-        target_mean = stats['mean']['DL_MUSE_Volume_' + str(roi_col)]
-        target_std = stats['std']['DL_MUSE_Volume_' + str(roi_col)]
-
-        return float( stats['mean']['DL_MUSE_Volume_' + str(roi_col)]), float(stats['std']['DL_MUSE_Volume_' + str(roi_col)])
+        return float(stats['mean']['DL_MUSE_Volume_' + str(roi_col)]), \
+               float(stats['std']['DL_MUSE_Volume_'  + str(roi_col)])
+    elif biomarker in ('BAG', 'SPARE_BA', 'SPARE-BA'):
+        # Both BAG and SPARE_BA stats live in normalization_stats.pkl
+        norm_stats = _load(os.path.join(stats_dir, 'normalization_stats.pkl'))
+        key = 'SPARE_BA' if biomarker in ('SPARE_BA', 'SPARE-BA') else 'BAG'
+        return float(norm_stats[key]['mean']), float(norm_stats[key]['std'])
     elif biomarker == 'SPARE_AD':
         return _unpack(_load(os.path.join(stats_dir, 'spare_ad_mean_std.pkl')))
-    elif biomarker == 'SPARE_BA':
-        return _unpack(_load(os.path.join(stats_dir, 'spare_ba_mean_std.pkl')))
     elif biomarker == 'MMSE':
         return _unpack(_load(os.path.join(stats_dir, 'mmse_mean_std.pkl')))
     elif biomarker == 'ADAS':
@@ -187,6 +186,18 @@ except Exception as e:
     print("Predictions will remain in normalized scale.")
     denormalize = False
 
+# Build a (PTID, Time) → real_BAG lookup from ALL ACCORD visits.
+# ACCORD has repeated measures; each visit has its own SPARE_BA-derived BAG.
+# BAG in the CSV is normalized — denormalize using the same stats as the target.
+real_bag_lookup = {}
+if 'BAG' in test_data.columns and 'Time' in test_data.columns:
+    for _, row in test_data.iterrows():
+        norm_bag = float(row['BAG'])
+        real_bag = norm_bag * target_std + target_mean if denormalize else norm_bag
+        real_bag_lookup[(str(row['PTID']), int(row['Time']))] = real_bag
+    print(f"Built real BAG lookup for {len(real_bag_lookup)} (PTID, Time) pairs "
+          f"across {test_data['PTID'].nunique()} subjects")
+
 # Create future time point data
 all_results = []
 
@@ -195,7 +206,7 @@ for time_point in future_timepoints:
     
     # Create future data by modifying the time component (last feature)
     future_data = baseline_data.copy()
-
+    
     print(f"Time point: {time_point}")
 
     future_data[:, -1] = time_point  # Set time to future time point
@@ -241,6 +252,7 @@ for time_point in future_timepoints:
             'lower_bound': lower_np[i],
             'upper_bound': upper_np[i],
             'interval_width': upper_np[i] - lower_np[i],
+            'real_BAG': real_bag_lookup.get((str(ptid), time_point), np.nan),
             'biomarker': biomarker
         }
         all_results.append(result)
