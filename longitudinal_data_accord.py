@@ -163,11 +163,6 @@ data_dir = './data/'
 
 data = pd.read_csv('ACCORD_MARCH_enriched.csv')
 
-for c in data.columns: 
-    print(c)
-
-sys.exit(0)
-
 data['Date.x'] = data['Date.x'].astype('datetime64[ns]')
 
 # Drop rows missing all H_MUSE ROIs
@@ -178,9 +173,10 @@ print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
 # ---------------------------------------------------------------------------
+
 def delta_baseline_fix(data):
-    for pt in data['PTID'].unique():
-        pt_indices = data[data['PTID'] == pt].index
+    for pt in data['PTID.x'].unique():
+        pt_indices = data[data['PTID.x'] == pt].index
         base = data.loc[pt_indices[0], 'Delta_Baseline']
         if base != 0:
             data.loc[pt_indices, 'Delta_Baseline'] -= base

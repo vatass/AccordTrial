@@ -22,11 +22,7 @@ parser.add_argument("--biomarker_name", help="biomarker name for inference", typ
 parser.add_argument("--output_file", help="Path to save inference results CSV", required=True)
 parser.add_argument("--biomarker", help="Biomarker type (MUSE, SPARE_AD, BAG, SPARE_BA)", required=True)
 parser.add_argument("--gpu_id", help="GPU ID to use", type=int, default=0)
-<<<<<<< HEAD
-parser.add_argument("--stats_dir", help="Directory containing normalization stats files", default="./data")
-=======
-parser.add_argument("--norm_stats_dir", help="Directory containing normalization stats pickle files (normalization_stats.pkl, dlmuse_rois_mean_std.pkl, etc.)", required=True)
->>>>>>> origin/claude/store-accord-predictions-jGASZ
+parser.add_argument("--stats_dir", help="Directory containing normalization stats pickle files (normalization_stats.pkl, dlmuse_rois_mean_std.pkl, etc.)", required=True)
 
 args = parser.parse_args()
 
@@ -37,7 +33,7 @@ data_file = args.data_file
 model_file = args.model_file
 output_file = args.output_file
 biomarker = args.biomarker.upper()
-stats_dir = args.norm_stats_dir
+stats_dir = args.stats_dir
 
 # Define future time points (8 years = 96 months, every 12 months)
 future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
