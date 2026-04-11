@@ -225,10 +225,10 @@ likelihood.eval()
 
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
     f_preds = deepkernelmodel(test_x)
-    y_preds = likelihood(f_preds)
-    mean = y_preds.mean
-    variance = y_preds.variance
-    lower, upper = y_preds.confidence_region()
+    mean = f_preds.mean
+    variance = f_preds.variance
+    lower = mean - 1.645 * f_preds.stddev
+    upper = mean + 1.645 * f_preds.stddev
 
 # Calculate metrics
 mae_pop = mean_absolute_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
@@ -257,10 +257,10 @@ logger.info(f"Interval Width: {mean_interval_width:.4f}")
 # ------------------------------------------------------------------
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
     accord_f_preds = deepkernelmodel(accord_test_x)
-    accord_y_preds = likelihood(accord_f_preds)
-    accord_mean = accord_y_preds.mean
-    accord_variance = accord_y_preds.variance
-    accord_lower, accord_upper = accord_y_preds.confidence_region()
+    accord_mean = accord_f_preds.mean
+    accord_variance = accord_f_preds.variance
+    accord_lower = accord_mean - 1.645 * accord_f_preds.stddev
+    accord_upper = accord_mean + 1.645 * accord_f_preds.stddev
 
 # Calculate ACCORD metrics
 accord_mae = mean_absolute_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
@@ -511,10 +511,10 @@ for tp in future_timepoints:
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         fp_preds = deepkernelmodel(forecast_tensor)
-        fy_preds = likelihood(fp_preds)
-        fc_mean     = fy_preds.mean
-        fc_variance = fy_preds.variance
-        fc_lower, fc_upper = fy_preds.confidence_region()
+        fc_mean     = fp_preds.mean
+        fc_variance = fp_preds.variance
+        fc_lower    = fc_mean - 1.645 * fp_preds.stddev
+        fc_upper    = fc_mean + 1.645 * fp_preds.stddev
 
     fc_mean_np     = fc_mean.cpu().detach().numpy()
     fc_variance_np = fc_variance.cpu().detach().numpy()
