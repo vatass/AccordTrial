@@ -449,12 +449,112 @@ results = {
 }
 
 
-# TODO: ACCORD Inference for 8 years ahead
-# future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
-# Extract the baseline 147 features + 1 the time. The time should be from the future timepoints. 
-# store the predictions in the same folder you store the previous accord inference, but use the 
-# keyword 'accord_eight_year_forecast_' 
-# Also store the forecasts in the original scale (use the normalization_stats.pkl)
+# ------------------------------------------------------------------
+# ACCORD Inference for 8 years ahead
+# ------------------------------------------------------------------
+logger.info("=== ACCORD 8-Year Forecast ===")
+future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
+
+# Extract per-subject baseline features (first visit per PTID).
+# Feature vector layout: 147 base features + 1 time value (last position).
+accord_forecast_ptids = []
+accord_baseline_features = []
+for ptid in accord_test_data['PTID'].unique():
+    first_row = accord_test_data[accord_test_data['PTID'] == ptid].iloc[0]
+    a = first_row['X'].strip('][').split(', ')
+    features = np.array([float(v) for v in a])
+    accord_forecast_ptids.append(ptid)
+    accord_baseline_features.append(features)
+
+accord_baseline_np = np.array(accord_baseline_features)  # shape: [n_subjects, 148]
+logger.info(f"Extracted baseline features for {len(accord_forecast_ptids)} ACCORD subjects "
+            f"(shape: {accord_baseline_np.shape})")
+
+# Load normalization stats for converting predictions back to original scale.
+forecast_denormalize = False
+forecast_target_mean, forecast_target_std = 0.0, 1.0
+norm_stats_path = './data/normalization_stats.pkl'
+if os.path.exists(norm_stats_path):
+    with open(norm_stats_path, 'rb') as f:
+        norm_stats_dict = pickle.load(f)
+    lookup_key = None
+    if biomarker_name in norm_stats_dict:
+        lookup_key = biomarker_name
+    elif biomarker_name.upper() in norm_stats_dict:
+        lookup_key = biomarker_name.upper()
+    if lookup_key:
+        forecast_target_mean = float(norm_stats_dict[lookup_key]['mean'])
+        forecast_target_std  = float(norm_stats_dict[lookup_key]['std'])
+        forecast_denormalize = True
+        logger.info(f"Denormalization stats for '{lookup_key}': "
+                    f"mean={forecast_target_mean:.4f}, std={forecast_target_std:.4f}")
+    else:
+        logger.info(f"Biomarker '{biomarker_name}' not found in {norm_stats_path}; "
+                    f"forecast will remain in normalized scale")
+else:
+    logger.info(f"normalization_stats.pkl not found at {norm_stats_path}; "
+                f"forecast will remain in normalized scale")
+
+# Run model inference for each future timepoint
+all_forecast_rows = []
+deepkernelmodel.eval()
+likelihood.eval()
+
+for tp in future_timepoints:
+    # Copy baseline features and replace time (last feature) with the future timepoint
+    forecast_data = accord_baseline_np.copy()
+    forecast_data[:, -1] = float(tp)
+
+    forecast_tensor = torch.Tensor(forecast_data)
+    if torch.cuda.is_available():
+        forecast_tensor = forecast_tensor.cuda(gpu_id)
+
+    with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        fp_preds = deepkernelmodel(forecast_tensor)
+        fy_preds = likelihood(fp_preds)
+        fc_mean     = fy_preds.mean
+        fc_variance = fy_preds.variance
+        fc_lower, fc_upper = fy_preds.confidence_region()
+
+    fc_mean_np     = fc_mean.cpu().detach().numpy()
+    fc_variance_np = fc_variance.cpu().detach().numpy()
+    fc_lower_np    = fc_lower.cpu().detach().numpy()
+    fc_upper_np    = fc_upper.cpu().detach().numpy()
+
+    # Inverse-normalize to original scale: y_orig = y_norm * std + mean
+    if forecast_denormalize:
+        fc_mean_np     = fc_mean_np     * forecast_target_std + forecast_target_mean
+        fc_lower_np    = fc_lower_np    * forecast_target_std + forecast_target_mean
+        fc_upper_np    = fc_upper_np    * forecast_target_std + forecast_target_mean
+        fc_variance_np = fc_variance_np * (forecast_target_std ** 2)
+
+    for i, ptid in enumerate(accord_forecast_ptids):
+        all_forecast_rows.append({
+            'PTID':           ptid,
+            'time_months':    tp,
+            'predicted':      fc_mean_np[i],
+            'lower_bound':    fc_lower_np[i],
+            'upper_bound':    fc_upper_np[i],
+            'variance':       fc_variance_np[i],
+            'interval_width': fc_upper_np[i] - fc_lower_np[i],
+        })
+
+    logger.info(f"  t={tp:>2}m: mean={fc_mean_np.mean():.4f}, "
+                f"interval_width={(fc_upper_np - fc_lower_np).mean():.4f}")
+
+forecast_df = pd.DataFrame(all_forecast_rows)
+forecast_filename = os.path.join(
+    output_dir,
+    f'accord_eight_year_forecast_{biomarker_name}_{biomarker_index}_{fold}.csv'
+)
+forecast_df.to_csv(forecast_filename, index=False)
+logger.info(f"ACCORD 8-year forecast saved to {forecast_filename} ({len(forecast_df)} rows, "
+            f"{len(accord_forecast_ptids)} subjects × {len(future_timepoints)} timepoints)")
+
+results['accord_eight_year_forecast_file'] = forecast_filename
+results['accord_eight_year_forecast_n_subjects'] = int(len(accord_forecast_ptids))
+results['accord_eight_year_forecast_timepoints'] = future_timepoints
+results['accord_eight_year_forecast_denormalized'] = bool(forecast_denormalize)
 
 results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}_{biomarker_index}_{fold}.json')
 with open(results_filename, 'w') as f:
