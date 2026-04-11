@@ -2,7 +2,7 @@
 Per-subject evaluation plot: 8-year BAG forecast vs real BAG observations.
 
 For each subject one subplot is drawn showing:
-  - Predicted BAG trajectory (line) with 90 % CI shading over 0–96 months
+  - Predicted BAG trajectory (line) over 0–96 months
   - Real BAG observations plotted at their *actual* timepoints in months from
     baseline (these will generally NOT fall on the 12-month forecast grid)
 
