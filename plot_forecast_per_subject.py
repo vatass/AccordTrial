@@ -289,9 +289,8 @@ if args.max_subjects:
 print(f"\nPlotting {len(subject_ids)} subjects …")
 
 forecast_timepoints = sorted(ensemble["time_months"].unique())
-PRED_COLOR  = "steelblue"
-OBS_COLOR   = "crimson"
-SHADE_ALPHA = 0.25
+PRED_COLOR = "steelblue"
+OBS_COLOR  = "crimson"
 
 
 # ---------------------------------------------------------------------------
@@ -306,10 +305,6 @@ def plot_subject(ax, ptid: str):
     ax.plot(
         subj["time_months"], subj["predicted"],
         color=PRED_COLOR, lw=2, label="Forecast",
-    )
-    ax.fill_between(
-        subj["time_months"], subj["lower_bound"], subj["upper_bound"],
-        color=PRED_COLOR, alpha=SHADE_ALPHA, label="90 % CI",
     )
 
     # --- Real BAG observations (at their actual timepoints) ---
