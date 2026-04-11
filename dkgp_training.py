@@ -448,6 +448,14 @@ results = {
     'n_accord_observations': int(len(accord_predictions_df)),
 }
 
+
+# TODO: ACCORD Inference for 8 years ahead
+# future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
+# Extract the baseline 147 features + 1 the time. The time should be from the future timepoints. 
+# store the predictions in the same folder you store the previous accord inference, but use the 
+# keyword 'accord_eight_year_forecast_' 
+# Also store the forecasts in the original scale (use the normalization_stats.pkl)
+
 results_filename = os.path.join(output_dir, f'results_biomarker_{biomarker_name}_{biomarker_index}_{fold}.json')
 with open(results_filename, 'w') as f:
     json.dump(results, f, indent=2)
