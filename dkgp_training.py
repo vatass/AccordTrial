@@ -205,7 +205,7 @@ optimizer = torch.optim.Adam([
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
-iterations = 1000
+iterations = 300
 logger.info(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()
