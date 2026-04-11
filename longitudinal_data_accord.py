@@ -194,7 +194,7 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex.x', 'Age.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 

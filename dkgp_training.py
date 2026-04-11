@@ -69,6 +69,26 @@ logger.info(f"Loaded {len(subject_ids)} subjects")
 
 accord_test_data = pd.read_csv('./data/subjectsamples_bag_accord.csv')
 
+# Load normalization stats once — used for both per-sample predictions and 8-year forecast
+target_mean, target_std = 0.0, 1.0
+denormalize = False
+_norm_path = './data/normalization_stats.pkl'
+if os.path.exists(_norm_path):
+    with open(_norm_path, 'rb') as _f:
+        _norm = pickle.load(_f)
+    _key = (biomarker_name if biomarker_name in _norm
+            else biomarker_name.upper() if biomarker_name.upper() in _norm
+            else None)
+    if _key:
+        target_mean = float(_norm[_key]['mean'])
+        target_std  = float(_norm[_key]['std'])
+        denormalize = True
+        logger.info(f"Denormalization stats for '{_key}': mean={target_mean:.4f}, std={target_std:.4f}")
+    else:
+        logger.info(f"Biomarker '{biomarker_name}' not found in normalization_stats.pkl; predictions stay normalized")
+else:
+    logger.info(f"normalization_stats.pkl not found; predictions will stay in normalized scale")
+
 # Load train/test split
 logger.info(f"Loading train IDs from {train_ids_file}")
 with open(train_ids_file, "rb") as openfile:
@@ -294,6 +314,15 @@ accord_mean_np     = accord_mean.cpu().detach().numpy()
 accord_lower_np    = accord_lower.cpu().detach().numpy()
 accord_upper_np    = accord_upper.cpu().detach().numpy()
 accord_variance_np = accord_variance.cpu().detach().numpy()
+
+# Denormalize to original scale (same stats used by the 8-year forecast)
+if denormalize:
+    accord_test_y_np   = accord_test_y_np   * target_std + target_mean
+    accord_mean_np     = accord_mean_np     * target_std + target_mean
+    accord_lower_np    = accord_lower_np    * target_std + target_mean
+    accord_upper_np    = accord_upper_np    * target_std + target_mean
+    accord_variance_np = accord_variance_np * (target_std ** 2)
+
 accord_interval_np = accord_upper_np - accord_lower_np
 accord_abs_error   = np.abs(accord_test_y_np - accord_mean_np)
 accord_sq_error    = (accord_test_y_np - accord_mean_np) ** 2
@@ -470,30 +499,10 @@ accord_baseline_np = np.array(accord_baseline_features)  # shape: [n_subjects, 1
 logger.info(f"Extracted baseline features for {len(accord_forecast_ptids)} ACCORD subjects "
             f"(shape: {accord_baseline_np.shape})")
 
-# Load normalization stats for converting predictions back to original scale.
-forecast_denormalize = False
-forecast_target_mean, forecast_target_std = 0.0, 1.0
-norm_stats_path = './data/normalization_stats.pkl'
-if os.path.exists(norm_stats_path):
-    with open(norm_stats_path, 'rb') as f:
-        norm_stats_dict = pickle.load(f)
-    lookup_key = None
-    if biomarker_name in norm_stats_dict:
-        lookup_key = biomarker_name
-    elif biomarker_name.upper() in norm_stats_dict:
-        lookup_key = biomarker_name.upper()
-    if lookup_key:
-        forecast_target_mean = float(norm_stats_dict[lookup_key]['mean'])
-        forecast_target_std  = float(norm_stats_dict[lookup_key]['std'])
-        forecast_denormalize = True
-        logger.info(f"Denormalization stats for '{lookup_key}': "
-                    f"mean={forecast_target_mean:.4f}, std={forecast_target_std:.4f}")
-    else:
-        logger.info(f"Biomarker '{biomarker_name}' not found in {norm_stats_path}; "
-                    f"forecast will remain in normalized scale")
-else:
-    logger.info(f"normalization_stats.pkl not found at {norm_stats_path}; "
-                f"forecast will remain in normalized scale")
+# Normalization stats already loaded at startup — reuse for forecast
+forecast_denormalize = denormalize
+forecast_target_mean = target_mean
+forecast_target_std  = target_std
 
 # Run model inference for each future timepoint
 all_forecast_rows = []
