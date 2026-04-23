@@ -325,6 +325,16 @@ if studies_no_dates:
 else:
     print('All studies have at least one extractable date.')
 
+
+additional_data = pd.read_csv('additional_data.csv')
+
+print('Studies in additional data', additional_data['Study'].unique(), )
+
+print(additional_data.columns)
+
+# TODO : Add additional_data to data
+
+
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
 # ---------------------------------------------------------------------------
