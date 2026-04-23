@@ -346,9 +346,16 @@ additional_data = pd.read_csv('additional_studies.csv')
 
 print('Studies in data', data['Study'].unique())
 print('Studies in additional data', additional_data['Study'].unique())
+
+
+# TODO: Stack the data and additional_data dataframe into the common dataframe. 
+# The additional_data dataframe containes some of the  studies from which we  cannot extract the date. 
+
+
+
+
 sys.exit(0)
 
-# stach the additional data to the data. 
 
 
 # ---------------------------------------------------------------------------
