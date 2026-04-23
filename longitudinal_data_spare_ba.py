@@ -344,6 +344,26 @@ data['PTID'] = data['PTID'].astype(str)
 data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
 print(f'Saved: {data_dir}data_bag_allstudies.csv')
 
+# ---------------------------------------------------------------------------
+# Save studies with no extractable MRID date as additional_data.csv
+# These are the studies that longitudinal_data.py removes (no calendar date
+# in MRID), so they are contributed here via longitudinal_data_spare_ba.py.
+# ---------------------------------------------------------------------------
+undatable_studies = [
+    'BLSA', 'GSP', 'HCP-Aging', 'HCP-YA', 'OASIS3', 'OASIS4',
+    'PreventAD', 'SHIP', 'UKBIOBANK', 'WRAP', 'WHICAP',
+]
+additional_data = data[data['Study'].isin(undatable_studies)].copy()
+if not additional_data.empty:
+    dlmuse_cols = [col for col in data.columns if col.startswith('DLMUSE_')]
+    fixed_cols = ['Age', 'Sex', 'MRID', 'PTID', 'SPARE_BA', 'Delta_Baseline', 'Study', 'Time']
+    save_cols = [c for c in fixed_cols if c in data.columns] + dlmuse_cols
+    additional_data[save_cols].to_csv('additional_data.csv', index=False)
+    print(f'Saved additional_data.csv: {additional_data["PTID"].nunique()} subjects '
+          f'from studies {sorted(additional_data["Study"].unique())}')
+else:
+    print('No undatable studies found in data; additional_data.csv not created.')
+
 sys.exit(0)
 
 
