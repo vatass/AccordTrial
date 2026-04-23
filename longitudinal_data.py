@@ -278,16 +278,27 @@ def extract_date_from_mrid(mrid: str, study: str) -> 'pd.Timestamp':
         elif study in ('AIBL', 'BIOCARD', 'FITBIR', 'HANDLS', 'MESA', 'PENN-PMC'):
             # Format: <ID>_YYYYMMDD  or  PREFIX_<ID>_YYYYMMDD
             return pd.to_datetime(mrid.split('_')[-1], format='%Y%m%d')
-        elif study == 'PENN-ADC':
-            # Format: YYYYMMDD_<ID>
+        elif study in ('PENN-ADC', 'PENN'):
+            # Format: YYYYMMDD_<ID> or YYYYMMDD_<ID>_<suffix>
             return pd.to_datetime(mrid.split('_')[0], format='%Y%m%d')
         elif study == 'HABS':
             # Format: P_<ID>_YYYY-MM-DD_<SITE>_<N>
             m = re.search(r'(\d{4}-\d{2}-\d{2})', mrid)
             if m:
                 return pd.to_datetime(m.group(1), format='%Y-%m-%d')
-        # BLSA, GSP, HCP-Aging, HCP-YA, OASIS3, OASIS4,
-        # PreventAD, SHIP, UKBIOBANK, WRAP — no calendar date in MRID
+        elif study == 'HABLE':
+            # Format: <ID>_YYYY-MM-DD or <ID>_YYYY-MM-DD_RPT<N>
+            m = re.search(r'(\d{4}-\d{2}-\d{2})', mrid)
+            if m:
+                return pd.to_datetime(m.group(1), format='%Y-%m-%d')
+        elif study == 'NACC':
+            # Format: NACC<ID>_YYYYMMDD (some older records use NACC<ID>_<visit_num>)
+            last = mrid.split('_')[-1]
+            if re.match(r'^\d{8}$', last):
+                return pd.to_datetime(last, format='%Y%m%d')
+        # BLSA, FITBIR(age-based), GSP, HCP-Aging, HCP-YA, KBASE, MAP - Rush,
+        # MARS, OASIS3, OASIS4, PreventAD, ROS, SHIP, UKBIOBANK, WHICAP, WRAP
+        # — no calendar date in MRID
         return pd.NaT
     except (ValueError, IndexError):
         return pd.NaT
