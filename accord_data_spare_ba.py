@@ -48,11 +48,11 @@ print(f'After H_MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 # ---------------------------------------------------------------------------
 data = data.sort_values(by=['PTID.x', 'Date.x'])
 
-# Delta_Baseline: days since each subject's first scan
-data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x - x.iloc[0]).dt.days)
+# Delta_Baseline: months since each subject's first scan
+data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x - x.iloc[0]).dt.days / 30)
 
-# Time in months (ceiling division, matching longitudinal_data.py)
-data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
+# Time in months (ceiling, matching longitudinal_data.py)
+data['Time'] = np.ceil(data['Delta_Baseline']).astype(int)
 
 # Remove duplicate Time entries per subject (keep first occurrence)
 data = data.drop_duplicates(subset=['PTID.x', 'Time'], keep='first')

@@ -51,8 +51,8 @@ data = data.sort_values(by=['PTID', 'Date'])
 # Delta_Baseline: days since each subject's first scan
 data['Delta_Baseline'] = data.groupby('PTID')['Date'].transform(lambda x: (x - x.iloc[0]).dt.days)
 
-# Time in months (ceiling division, matching longitudinal_data.py)
-data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
+# Time in months (ceiling, matching longitudinal_data.py)
+data['Time'] = np.ceil(data['Delta_Baseline']).astype(int)
 
 # Remove duplicate Time entries per subject (keep first occurrence)
 data = data.groupby(['PTID.x', 'Time'], as_index=False).agg(lambda x: x.iloc[0])

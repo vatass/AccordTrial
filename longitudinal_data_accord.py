@@ -1,6 +1,5 @@
 '''
 ACCORD - CN Digital Twin - DKGP
-Data for Predicting SPARE-BA trajectories.
 '''
 
 import os
@@ -8,6 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 import pickle
+from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
@@ -42,7 +42,7 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     # hmuse = [i for i in features if i.startswith('H_MUSE')]
 
     # print('Features', features)
-    clinical_features = [f for f in features if not f.startswith('H_MUSE')]
+    clinical_features = [f for f in features if not f.startswith('MUSE')]
     # print('Clinical Features', clinical_features)
 
     # target = [t for t in target if t.startswith('H_')]
@@ -161,99 +161,22 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
 data_dir = './data/'
 
-data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+data = pd.read_csv('ACCORD_MARCH_enriched.csv')
 
-print(f'Loaded: {data.shape}')
-
-# ---------------------------------------------------------------------------
-# 2. Basic Filters
-# ---------------------------------------------------------------------------
-print('Removing BLSA 1.5T data and BIOCARD...')
-data = data[data['SITE'] != 'BLSA-1.5T']
-data = data[data['Study'] != 'BIOCARD']
-
-data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
-data = data[data['Visit_Code'] != 'ADNI Screening']
-data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
-
-# Forward-fill missing diagnosis
-data['Diagnosis_nearest_2.0'] = data['Diagnosis_nearest_2.0'].fillna(method='ffill')
-
-# Prefix PTID for AIBL and PENN to avoid collisions
-data.loc[data['Study'] == 'AIBL', 'PTID'] = 'aibl' + data.loc[data['Study'] == 'AIBL', 'PTID'].astype(str)
-data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == 'PENN', 'PTID'].astype(str)
-
-data['Date'] = data['Date'].astype('datetime64[ns]')
+data['Date.x'] = data['Date.x'].astype('datetime64[ns]')
 
 # Drop rows missing all H_MUSE ROIs
-hmuse = list(data.filter(regex='H_MUSE*'))
+hmuse = list(data.filter(regex=r'^MUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
-print(f'After H_MUSE NaN removal: {data["PTID"].nunique()} subjects')
-
-# ---------------------------------------------------------------------------
-# 3. Map Diagnosis
-# ---------------------------------------------------------------------------
-unique_diagnosis = list(data['Diagnosis_nearest_2.0'].unique())
-dx_mapping = pd.read_csv('../LongGPClustering/DX_Mapping.csv')
-
-old_diagnosis, new_diagnosis = [], []
-for u in unique_diagnosis:
-    old_diagnosis.append(u)
-    indx = dx_mapping[dx_mapping['Diagnosis'] == u].index.values
-    new_diagnosis.append(dx_mapping['Class'].iloc[indx[0]] if len(indx) > 0 else u)
-
-data['Diagnosis_nearest_2.0'].replace(old_diagnosis, new_diagnosis, inplace=True)
-
-# Remove non-AD-spectrum diagnoses
-data = data[~data['Diagnosis_nearest_2.0'].isin(
-    ['Vascular Dementia', 'other', 'FTD', '', 'PD', 'Lewy Body Dementia', 'Hydrocephalus', 'PCA', 'TBI']
-)]
-
-if data['Diagnosis_nearest_2.0'].isna().sum():
-    data.loc[data['Diagnosis_nearest_2.0'].isna(), 'Diagnosis_nearest_2.0'] = 'unk'
-
-data['Diagnosis_nearest_2.0'].replace(
-    ['CN', 'MCI', 'AD', 'unk', 'other', 'early MCI', 'dementia'],
-    [0,    1,     2,    -1,    -1,      1,            2], inplace=True
-)
-
-# ---------------------------------------------------------------------------
-# 4. Keep only subjects that are CN (0) at all timepoints
-# ---------------------------------------------------------------------------
-cn_mask = data.groupby('PTID')['Diagnosis_nearest_2.0'].apply(lambda x: (x == 0).all())
-data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
-print(f'CN-only subjects: {data["PTID"].nunique()}')
-
-# Encode comorbidities
-data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0, 1], inplace=True)
-data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0, 1], inplace=True)
-data['Diabetes'].replace(['Diabetes negative/absent', 'Diabetes positive/present'], [0, 1], inplace=True)
-
-# ---------------------------------------------------------------------------
-# 5. Keep subjects with >1 acquisition and report per-study counts
-# ---------------------------------------------------------------------------
-data = data.groupby('PTID').filter(lambda x: x.shape[0] > 1)
-
-print('\n=== Studies with Multiple Acquisitions ===')
-studies_with_multiple = []
-for study in sorted(data['Study'].unique()):
-    study_data = data[data['Study'] == study]
-    total = study_data['PTID'].nunique()
-    n_multi = study_data.groupby('PTID').filter(lambda x: x.shape[0] > 1)['PTID'].nunique()
-    if n_multi > 0:
-        studies_with_multiple.append(study)
-    print(f'  {study}: {n_multi}/{total} subjects with multiple acquisitions ({100 * n_multi / total:.1f}%)')
-print(f'Total studies with multiple acquisitions: {len(studies_with_multiple)}')
-
-data = data[data['Study'].isin(studies_with_multiple)]
-print(f'Total subjects after study filter: {data["PTID"].nunique()}')
+print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
 # ---------------------------------------------------------------------------
+
 def delta_baseline_fix(data):
-    for pt in data['PTID'].unique():
-        pt_indices = data[data['PTID'] == pt].index
+    for pt in data['PTID.x'].unique():
+        pt_indices = data[data['PTID.x'] == pt].index
         base = data.loc[pt_indices[0], 'Delta_Baseline']
         if base != 0:
             data.loc[pt_indices, 'Delta_Baseline'] -= base
@@ -261,34 +184,37 @@ def delta_baseline_fix(data):
 
 data = delta_baseline_fix(data)
 
-for pt in data['PTID'].unique():
-    if data[data['PTID'] == pt].iloc[0]['Delta_Baseline'] != 0.0:
+for pt in data['PTID.x'].unique():
+    if data[data['PTID.x'] == pt].iloc[0]['Delta_Baseline'] != 0.0:
         print(f'Warning: {pt} has non-zero Delta_Baseline at baseline')
 
 # Time in months (ceiling division)
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
-# Convert Delta_Baseline from days to months
-data['Delta_Baseline'] = data['Delta_Baseline'] / 30
-
 # Remove duplicate Time entries per subject
-data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
+data = data.groupby(['PTID.x', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
 
 data_unnorm = data.copy()
 
 # ---------------------------------------------------------------------------
-# 7. Z-score MUSE ROIs
+# 7. Z-score MUSE ROIs using pre-computed combined normalization stats
 # ---------------------------------------------------------------------------
 subjects_df_hmuse = data.filter(regex=r'^MUSE_')
-mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
-std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
-with open(data_dir + '145_MUSE_allstudies_mean_std.pkl', 'wb') as f:
-    pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
+muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
+if not os.path.exists(muse_pkl):
+    raise FileNotFoundError(
+        f'{muse_pkl} not found. Run compute_combined_normalization_stats.py first.')
+print(f'Loading MUSE stats from: {muse_pkl}')
+with open(muse_pkl, 'rb') as f:
+    muse_stats = pickle.load(f)
+mean_hmuse = muse_stats['mean']
+std_hmuse  = muse_stats['std']
 
 for i, c in enumerate(subjects_df_hmuse.columns):
     data[c] = (subjects_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
+
 
 # Keep only non-negative timepoints
 data = data[data['Time'] >= 0]
@@ -300,52 +226,37 @@ data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 10. Normalize / encode clinical variables  (save all stats for later use)
+# 10. Normalize clinical variables using pre-computed combined stats
 # ---------------------------------------------------------------------------
-mean_age,     std_age     = data['Age'].mean(),     data['Age'].std()
-mean_spareba, std_spareba = data['SPARE_BA'].mean(), data['SPARE_BA'].std()
-mean_bag,     std_bag     = data['BAG'].mean(),      data['BAG'].std()
+norm_pkl = data_dir + 'normalization_stats.pkl'
+if not os.path.exists(norm_pkl):
+    raise FileNotFoundError(
+        f'{norm_pkl} not found. Run compute_combined_normalization_stats.py first.')
+print(f'Loading normalization stats from: {norm_pkl}')
+with open(norm_pkl, 'rb') as f:
+    normalization_stats = pickle.load(f)
 
-data['Age']     = (data['Age']     - mean_age)     / std_age
+mean_age     = normalization_stats['Age']['mean']
+std_age      = normalization_stats['Age']['std']
+mean_spareba = normalization_stats['SPARE_BA']['mean']
+std_spareba  = normalization_stats['SPARE_BA']['std']
+mean_bag     = normalization_stats['BAG']['mean']
+std_bag      = normalization_stats['BAG']['std']
+
+data['Age']      = (data['Age']      - mean_age)     / std_age
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
-data['BAG']     = (data['BAG']     - mean_bag)     / std_bag
+data['BAG']      = (data['BAG']      - mean_bag)     / std_bag
 
 data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
-# Persist normalization statistics for downstream scripts
-normalization_stats = {
-    'Age':      {'mean': mean_age,     'std': std_age},
-    'SPARE_BA': {'mean': mean_spareba, 'std': std_spareba},
-    'BAG':      {'mean': mean_bag,     'std': std_bag},
-}
-with open(data_dir + 'normalization_stats.pkl', 'wb') as f:
-    pickle.dump(normalization_stats, f)
-print('Normalization stats saved.')
 print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-
-for c in data.columns: 
-    print(c)
-
-clinical_features = ['Sex', 'Age', 'SPARE_BA', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
-
-# ---------------------------------------------------------------------------
-# 11. Save CSV (BAG biomarker)
-# ---------------------------------------------------------------------------
-all_subjects = list(data['PTID'].unique())
-print(f'Total subjects: {len(all_subjects)}')
-
-data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}data_bag_allstudies.csv')
-
-sys.exit(0)
-
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
@@ -353,13 +264,7 @@ sys.exit(0)
 features = [name for name in data.columns if name.startswith('MUSE_Volume') and int(name[12:]) < 300]
 features.extend(clinical_features)
 
-print(features)
-
-
-with open(data_dir + 'features_spare_ba.pkl', 'wb') as f:
-    pickle.dump(features, f)
-
-target = ['SPARE_BA']
+target = ['BAG']
 
 samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
 
@@ -368,22 +273,4 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
 # longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
-samples_df.to_csv(data_dir + 'subjectsamples_spare_ba_'+'allstudies'+'.csv')
-sys.exit(0)
-
-# ---------------------------------------------------------------------------
-# 13. 5-Fold Cross Validation
-# ---------------------------------------------------------------------------
-print(f'\nCreating 5-fold splits for {len(all_subjects)} subjects...')
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-for i, (train_index, test_index) in enumerate(kf.split(all_subjects)):
-    train_ids = [all_subjects[t] for t in train_index]
-    test_ids  = [all_subjects[t] for t in test_index]
-    assert not (set(train_ids) & set(test_ids)), f'Data leak in fold {i}!'
-    print(f'  Fold {i}: {len(train_ids)} train / {len(test_ids)} test')
-    with open(data_dir + f'train_subject_bag_allstudies_ids_hmuse{i}.pkl', 'wb') as f:
-        pickle.dump(train_ids, f, protocol=pickle.HIGHEST_PROTOCOL)
-    with open(data_dir + f'test_subject_bag_allstudies_ids_hmuse{i}.pkl', 'wb') as f:
-        pickle.dump(test_ids, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-print('Done.')
+samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')

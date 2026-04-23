@@ -287,6 +287,9 @@ for pt in data['PTID'].unique():
 # Time in months (ceiling division)
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
+# Convert Delta_Baseline from days to months
+data['Delta_Baseline'] = data['Delta_Baseline'] / 30
+
 # Remove duplicate Time entries per subject
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
@@ -383,6 +386,7 @@ features.extend(clinical_features)
 with open(data_dir + 'features_bag.pkl', 'wb') as f:
     pickle.dump(features, f)
 
+
 target = ['BAG']
 
 samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
@@ -391,7 +395,7 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
-longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+# longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 sys.exit(0)
 

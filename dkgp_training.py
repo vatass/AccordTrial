@@ -148,16 +148,16 @@ deepkernelmodel.train()
 deepkernelmodel.likelihood.train()
 
 optimizer = torch.optim.Adam([
-    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.01, 'weight_decay': 1e-2},
-    {'params': deepkernelmodel.covar_module.parameters(), 'lr': 0.01},
-    {'params': deepkernelmodel.mean_module.parameters(), 'lr': 0.01},
-    {'params': deepkernelmodel.likelihood.parameters(), 'lr': 0.01}
+    {'params': deepkernelmodel.feature_extractor.parameters(), 'lr': 0.02, 'weight_decay': 0.01},
+    {'params': deepkernelmodel.covar_module.parameters(), 'lr': 0.02},
+    {'params': deepkernelmodel.mean_module.parameters(), 'lr': 0.02},
+    {'params': deepkernelmodel.likelihood.parameters(), 'lr': 0.02}
 ])
 
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
-iterations = 500
+iterations = 200
 print(f"Training for {iterations} iterations...")
 for i in range(iterations):
     deepkernelmodel.train()
