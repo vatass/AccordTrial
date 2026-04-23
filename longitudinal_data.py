@@ -332,7 +332,8 @@ print('Studies in additional data', additional_data['Study'].unique(), )
 
 print(additional_data.columns)
 
-# TODO : Add additional_data to data
+data = pd.concat([data, additional_data], ignore_index=True)
+print(f'After adding additional data: {data["PTID"].nunique()} subjects, {data.shape[0]} rows')
 
 
 # ---------------------------------------------------------------------------
