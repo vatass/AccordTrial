@@ -3,12 +3,11 @@ ACCORD - CN Digital Twin - DKGP
 '''
 
 import os
+import re
 import sys
 import numpy as np
 import pandas as pd
 import pickle
-from sklearn.model_selection import StratifiedKFold, KFold
-from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
@@ -256,16 +255,55 @@ data = data[data['Study'].isin(studies_with_multiple)]
 print(f'Total subjects after study filter: {data["PTID"].nunique()}')
 
 
-data['Date'] = data['MRID'].str.split('-').str[-1]
-data['Date'] = pd.to_datetime(data['Date'], format='%Y%m%d')
-print(data['Date'].head(10))
-data['Date'] = data['Date'].astype('datetime64[ns]')
+# MRID formats differ across the 25 iSTAGING studies.  The naive
+# split('-')[-1] only yields a valid YYYYMMDD for a handful of cohorts
+# (ACCORD, ADNI_DOD, CARDIA, SPRINT, WHIMS, lookAHEAD).  All others
+# need study-specific logic; some have no calendar date in the MRID at all.
+print('\n=== MRID format samples per study ===')
+for _study in sorted(data['Study'].unique()):
+    _samples = data[data['Study'] == _study]['MRID'].dropna().head(3).tolist()
+    print(f'  {_study}: {_samples}')
 
 
-# TODO: Investigate how the MRIDS look per study because I am  getting an error
-# on the date. 
+def extract_date_from_mrid(mrid: str, study: str) -> 'pd.Timestamp':
+    """Return a Timestamp parsed from the MRID, or NaT when not possible."""
+    try:
+        if study in ('ACCORD', 'ADNI_DOD', 'CARDIA', 'SPRINT', 'WHIMS', 'lookAHEAD'):
+            # Format: <ID>-YYYYMMDD
+            return pd.to_datetime(mrid.split('-')[-1], format='%Y%m%d')
+        elif study == 'ADNI':
+            # Format: 002_S_0295_YYYY-MM-DD
+            return pd.to_datetime(mrid.split('_')[-1], format='%Y-%m-%d')
+        elif study in ('AIBL', 'BIOCARD', 'FITBIR', 'HANDLS', 'MESA', 'PENN-PMC'):
+            # Format: <ID>_YYYYMMDD  or  PREFIX_<ID>_YYYYMMDD
+            return pd.to_datetime(mrid.split('_')[-1], format='%Y%m%d')
+        elif study == 'PENN-ADC':
+            # Format: YYYYMMDD_<ID>
+            return pd.to_datetime(mrid.split('_')[0], format='%Y%m%d')
+        elif study == 'HABS':
+            # Format: P_<ID>_YYYY-MM-DD_<SITE>_<N>
+            m = re.search(r'(\d{4}-\d{2}-\d{2})', mrid)
+            if m:
+                return pd.to_datetime(m.group(1), format='%Y-%m-%d')
+        # BLSA, GSP, HCP-Aging, HCP-YA, OASIS3, OASIS4,
+        # PreventAD, SHIP, UKBIOBANK, WRAP — no calendar date in MRID
+        return pd.NaT
+    except (ValueError, IndexError):
+        return pd.NaT
 
-sys.exit(0)
+
+data['Date'] = [
+    extract_date_from_mrid(mrid, study)
+    for mrid, study in zip(data['MRID'], data['Study'])
+]
+
+print('\n=== Date extraction coverage per study ===')
+for _study in sorted(data['Study'].unique()):
+    _mask = data['Study'] == _study
+    _total = _mask.sum()
+    _parsed = data.loc[_mask, 'Date'].notna().sum()
+    print(f'  {_study}: {_parsed}/{_total} dates parsed')
+print()
 
 
 # ---------------------------------------------------------------------------
