@@ -315,6 +315,15 @@ for _study in sorted(data['Study'].unique()):
         print(f'  {_study} ({_total - _parsed} unparsed): {_unparsed_mrids}')
 print()
 
+# Remove studies from which no date can be extracted at all
+studies_with_any_date = data.groupby('Study')['Date'].apply(lambda x: x.notna().any())
+studies_no_dates = studies_with_any_date[~studies_with_any_date].index.tolist()
+if studies_no_dates:
+    print(f'Removing studies with no extractable dates: {studies_no_dates}')
+    data = data[~data['Study'].isin(studies_no_dates)]
+    print(f'Subjects after removing undated studies: {data["PTID"].nunique()}')
+else:
+    print('All studies have at least one extractable date.')
 
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
