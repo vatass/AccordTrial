@@ -328,12 +328,40 @@ else:
 
 additional_data = pd.read_csv('additional_data.csv')
 
-print('Studies in additional data', additional_data['Study'].unique(), )
+print('Studies in additional data:', additional_data['Study'].unique())
+print('Columns in additional data:', additional_data.columns.tolist())
 
-print(additional_data.columns)
+# Extract dates for additional_data and remove studies with no extractable dates
+additional_data['Date'] = [
+    extract_date_from_mrid(mrid, study)
+    for mrid, study in zip(additional_data['MRID'], additional_data['Study'])
+]
+add_studies_with_any_date = additional_data.groupby('Study')['Date'].apply(lambda x: x.notna().any())
+add_studies_no_dates = add_studies_with_any_date[~add_studies_with_any_date].index.tolist()
+if add_studies_no_dates:
+    print(f'Removing from additional_data studies with no extractable dates: {add_studies_no_dates}')
+    additional_data = additional_data[~additional_data['Study'].isin(add_studies_no_dates)]
+    print(f'additional_data subjects after date filter: {additional_data["PTID"].nunique()}')
+else:
+    print('All studies in additional_data have at least one extractable date.')
 
+# Concatenate
 data = pd.concat([data, additional_data], ignore_index=True)
-print(f'After adding additional data: {data["PTID"].nunique()} subjects, {data.shape[0]} rows')
+
+# Validation
+n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
+assert n_dup == 0, f'{n_dup} duplicate (PTID, MRID) pairs found after concat!'
+print('Validation passed: no duplicate (PTID, MRID) pairs.')
+
+print('\n=== Post-concatenation summary ===')
+print(f'Total rows    : {data.shape[0]}')
+print(f'Total subjects: {data["PTID"].nunique()}')
+print(f'Total studies : {data["Study"].nunique()}')
+print('\nPer-study breakdown:')
+for _study in sorted(data['Study'].unique()):
+    _n_subj = data[data['Study'] == _study]['PTID'].nunique()
+    _n_rows = (data['Study'] == _study).sum()
+    print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
 
 
 # ---------------------------------------------------------------------------
