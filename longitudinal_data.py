@@ -163,6 +163,7 @@ data_dir = './data/'
 
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
+
 print(f'Loaded: {data.shape}')
 print(data['MRID'].head(10))
 print(data['MRID'].tail(10))
@@ -313,7 +314,30 @@ for _study in sorted(data['Study'].unique()):
     if _parsed < _total:
         _unparsed_mrids = data.loc[_mask & data['Date'].isna(), 'MRID'].dropna().head(5).tolist()
         print(f'  {_study} ({_total - _parsed} unparsed): {_unparsed_mrids}')
-print()
+
+data['Delta_Baseline'] = data.groupby('PTID')['Date'].transform(lambda x: (x - x.iloc[0]).dt.days)
+
+# Keep only specific columns
+# 1. Identify all columns that start with 'DLMUSE'
+dlmuse_cols = [col for col in data.columns if col.startswith('DLMUSE')]
+
+# 2. Define your fixed columns
+fixed_cols = ['Age', 'Sex', 'MRID', 'PTID', 'DX_AD', 'Delta_Baseline', 'Study']
+
+# 3. Combine them and filter the DataFrame
+data = data[fixed_cols + dlmuse_cols]
+
+# Optional: Verify the new shape
+print(data.head())
+
+# load the istaging 2.0 studies with the harmonized DLMUSE and SPARE_BA
+additional_data = pd.read_csv('additional_studies.csv')
+
+print('Studies in data', data['Study'].unique())
+print('Studies in additional data', additional_data['Study'].unique())
+sys.exit(0)
+
+# stach the additional data to the data. 
 
 
 # ---------------------------------------------------------------------------

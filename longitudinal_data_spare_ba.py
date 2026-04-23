@@ -161,9 +161,22 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
 data_dir = './data/'
 
-data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+# data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+# data = pd.read_csv('/cbica/home/baikk/Data/istaging_with_dl_muse_harmonized_new_version.csv')
+data = pd.read_csv('../LongGPClustering/iSTAGING_with_SPARE_AD_BA.csv')
+
 
 print(f'Loaded: {data.shape}')
+
+studies = ['BLSA', 'PreventAD', 'WRAP', 'WHICAP']
+
+data = data[data['Study'].isin(studies)]
+
+print(data['H_DL_MUSE_Volume_4'].describe())
+
+print(data['PTID'].nunique())
+
+data.columns = data.columns.str.replace('H_DL_MUSE_Volume_', 'DLMUSE_', regex=False)
 
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
@@ -224,6 +237,9 @@ cn_mask = data.groupby('PTID')['Diagnosis_nearest_2.0'].apply(lambda x: (x == 0)
 data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
 print(f'CN-only subjects: {data["PTID"].nunique()}')
 
+
+
+
 # Encode comorbidities
 data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0, 1], inplace=True)
 data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0, 1], inplace=True)
@@ -264,6 +280,25 @@ data = delta_baseline_fix(data)
 for pt in data['PTID'].unique():
     if data[data['PTID'] == pt].iloc[0]['Delta_Baseline'] != 0.0:
         print(f'Warning: {pt} has non-zero Delta_Baseline at baseline')
+
+
+
+# 1. Identify all columns that start with 'DLMUSE'
+dlmuse_cols = [col for col in data.columns if col.startswith('DLMUSE')]
+
+# 2. Define your fixed columns
+fixed_cols = ['Age', 'Sex', 'MRID', 'PTID', 'SPARE_BA', 'Delta_Baseline', 'Study']
+
+# 3. Combine them and filter the DataFrame
+data = data[fixed_cols + dlmuse_cols]
+
+# Optional: Verify the new shape
+print(data.head())
+
+data.to_csv('additional_studies.csv')
+
+print(len(data.columns)) 
+sys.exit()
 
 # Time in months (ceiling division)
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
