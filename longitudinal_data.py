@@ -305,6 +305,16 @@ for _study in sorted(data['Study'].unique()):
     print(f'  {_study}: {_parsed}/{_total} dates parsed')
 print()
 
+print('\n=== MRID samples for studies with unparsed dates ===')
+for _study in sorted(data['Study'].unique()):
+    _mask = data['Study'] == _study
+    _parsed = data.loc[_mask, 'Date'].notna().sum()
+    _total = _mask.sum()
+    if _parsed < _total:
+        _unparsed_mrids = data.loc[_mask & data['Date'].isna(), 'MRID'].dropna().head(5).tolist()
+        print(f'  {_study} ({_total - _parsed} unparsed): {_unparsed_mrids}')
+print()
+
 
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
