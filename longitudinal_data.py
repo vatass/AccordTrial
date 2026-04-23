@@ -161,9 +161,14 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
 data_dir = './data/'
 
-data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
 print(f'Loaded: {data.shape}')
+print(data['MRID'].head(10))
+print(data['MRID'].tail(10))
+
+print(data['MRID'].nunique())
+
 
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
@@ -172,28 +177,28 @@ print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
 data = data[data['Study'] != 'BIOCARD']
 
-data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
-data = data[data['Visit_Code'] != 'ADNI Screening']
-data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
+# data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
+# data = data[data['Visit_Code'] != 'ADNI Screening']
+# data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
 
 # Forward-fill missing diagnosis
-data['Diagnosis_nearest_2.0'] = data['Diagnosis_nearest_2.0'].fillna(method='ffill')
+data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
 
 # Prefix PTID for AIBL and PENN to avoid collisions
 data.loc[data['Study'] == 'AIBL', 'PTID'] = 'aibl' + data.loc[data['Study'] == 'AIBL', 'PTID'].astype(str)
 data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == 'PENN', 'PTID'].astype(str)
 
-data['Date'] = data['Date'].astype('datetime64[ns]')
+
 
 # Drop rows missing all H_MUSE ROIs
-hmuse = list(data.filter(regex=r'^MUSE_'))
+hmuse = list(data.filter(regex=r'^DMUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
 print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Map Diagnosis
 # ---------------------------------------------------------------------------
-unique_diagnosis = list(data['Diagnosis_nearest_2.0'].unique())
+unique_diagnosis = list(data['DX_AD'].unique())
 dx_mapping = pd.read_csv('../LongGPClustering/DX_Mapping.csv')
 
 old_diagnosis, new_diagnosis = [], []
@@ -202,17 +207,17 @@ for u in unique_diagnosis:
     indx = dx_mapping[dx_mapping['Diagnosis'] == u].index.values
     new_diagnosis.append(dx_mapping['Class'].iloc[indx[0]] if len(indx) > 0 else u)
 
-data['Diagnosis_nearest_2.0'].replace(old_diagnosis, new_diagnosis, inplace=True)
+data['DX_AD'].replace(old_diagnosis, new_diagnosis, inplace=True)
 
 # Remove non-AD-spectrum diagnoses
-data = data[~data['Diagnosis_nearest_2.0'].isin(
+data = data[~data['DX_AD'].isin(
     ['Vascular Dementia', 'other', 'FTD', '', 'PD', 'Lewy Body Dementia', 'Hydrocephalus', 'PCA', 'TBI']
 )]
 
-if data['Diagnosis_nearest_2.0'].isna().sum():
-    data.loc[data['Diagnosis_nearest_2.0'].isna(), 'Diagnosis_nearest_2.0'] = 'unk'
+if data['DX_AD'].isna().sum():
+    data.loc[data['DX_AD'].isna(), 'DX_AD'] = 'unk'
 
-data['Diagnosis_nearest_2.0'].replace(
+data['DX_AD'].replace(
     ['CN', 'MCI', 'AD', 'unk', 'other', 'early MCI', 'dementia'],
     [0,    1,     2,    -1,    -1,      1,            2], inplace=True
 )
@@ -220,14 +225,14 @@ data['Diagnosis_nearest_2.0'].replace(
 # ---------------------------------------------------------------------------
 # 4. Keep only subjects that are CN (0) at all timepoints
 # ---------------------------------------------------------------------------
-cn_mask = data.groupby('PTID')['Diagnosis_nearest_2.0'].apply(lambda x: (x == 0).all())
+cn_mask = data.groupby('PTID')['DX_AD'].apply(lambda x: (x == 0).all())
 data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
 print(f'CN-only subjects: {data["PTID"].nunique()}')
 
 # Encode comorbidities
-data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0, 1], inplace=True)
-data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0, 1], inplace=True)
-data['Diabetes'].replace(['Diabetes negative/absent', 'Diabetes positive/present'], [0, 1], inplace=True)
+# data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0, 1], inplace=True)
+# data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0, 1], inplace=True)
+# data['Diabetes'].replace(['Diabetes negative/absent', 'Diabetes positive/present'], [0, 1], inplace=True)
 
 # ---------------------------------------------------------------------------
 # 5. Keep subjects with >1 acquisition and report per-study counts
@@ -245,8 +250,22 @@ for study in sorted(data['Study'].unique()):
     print(f'  {study}: {n_multi}/{total} subjects with multiple acquisitions ({100 * n_multi / total:.1f}%)')
 print(f'Total studies with multiple acquisitions: {len(studies_with_multiple)}')
 
+
 data = data[data['Study'].isin(studies_with_multiple)]
 print(f'Total subjects after study filter: {data["PTID"].nunique()}')
+
+
+data['Date'] = data['MRID'].str.split('-').str[-1]
+data['Date'] = pd.to_datetime(data['Date'], format='%Y%m%d')
+print(data['Date'].head(10))
+data['Date'] = data['Date'].astype('datetime64[ns]')
+
+
+# TODO: Investigate how the MRIDS look per study because I am  getting an error
+# on the date. 
+
+sys.exit(0)
+
 
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
@@ -277,7 +296,7 @@ data_unnorm = data.copy()
 # ---------------------------------------------------------------------------
 # 7. Z-score MUSE ROIs using pre-computed combined normalization stats
 # ---------------------------------------------------------------------------
-subjects_df_hmuse = data.filter(regex=r'^MUSE_')
+subjects_df_hmuse = data.filter(regex=r'^DLMUSE_')
 
 muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
 if not os.path.exists(muse_pkl):
@@ -297,11 +316,11 @@ for i, c in enumerate(subjects_df_hmuse.columns):
 # ---------------------------------------------------------------------------
 data['Baseline_Age'] = data.groupby('PTID')['Age'].transform('min')
 
-for col in [c for c in data.columns if c.startswith('MUSE_')]:
-    data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
+# for col in [c for c in data.columns if c.startswith('DLMUSE_')]:
+#     data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
 
-for col in ['SPARE_AD', 'SPARE_BA', 'Diagnosis_nearest_2.0']:
-    data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
+# for col in ['SPARE_AD', 'SPARE_BA', 'Diagnosis_nearest_2.0']:
+#     data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
 
 # Keep only non-negative timepoints
 data = data[data['Time'] >= 0]
@@ -341,7 +360,7 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-clinical_features = ['Sex', 'Age', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
+clinical_features = ['Sex', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -352,8 +371,8 @@ all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
 data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}longitudinal_covariates_bag_allstudies.csv')
+data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
+print(f'Saved: {data_dir}data_bag_allstudies.csv')
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
