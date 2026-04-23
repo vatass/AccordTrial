@@ -19,42 +19,37 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 # 1. Load ACCORD data
 # ---------------------------------------------------------------------------
-data = pd.read_csv('ACCORD_MARCH_enriched.csv')
+data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
+data = data[data['Study']=='ACCORD']
 
-print('Subjects', data['PTID.x'].nunique())
+print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
-
-print(data['X4'].describe())
-
-rename_map = {f'X{i}': f'MUSE_Volume_{i}' for i in range(4, 208) if f'X{i}' in data.columns}
-data = data.rename(columns=rename_map)
-print(f'Renamed {len(rename_map)} columns (X4–X207 → MUSE_Volume_4–MUSE_Volume_207)')
 
 # ---------------------------------------------------------------------------
 # 2. Basic cleanup
 # ---------------------------------------------------------------------------
-data = data.drop_duplicates(subset=['PTID.x', 'Date.x'], keep='first')
+data = data.drop_duplicates(subset=['PTID', 'Date'], keep='first')
 
 # Date.x is stored as integer YYYYMMDD (e.g. 20040121) — parse explicitly
-data['Date.x'] = pd.to_datetime(data['Date.x'].astype(str), format='%Y%m%d')
+data['Date'] = pd.to_datetime(data['Date'].astype(str), format='%Y%m%d')
 
 print(f'SPARE_BA available: {data["SPARE_BA"].notna().sum()}/{len(data)} rows')
 print(f'SPARE_AD available: {data["SPARE_AD"].notna().sum()}/{len(data)} rows')
 
 # Drop rows missing all MUSE volume ROIs
-muse_volume_cols = [c for c in data.columns if c.startswith('MUSE_Volume_')]
+muse_volume_cols = [c for c in data.columns if c.startswith('DLMUSE_')]
 if muse_volume_cols:
     data = data.dropna(axis=0, subset=muse_volume_cols)
-print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
+print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
 # 3. Sort and compute Time (months from first acquisition per subject)
 # ---------------------------------------------------------------------------
-data = data.sort_values(by=['PTID.x', 'Date.x'])
+data = data.sort_values(by=['PTID', 'Date'])
 
-# Delta_Baseline: months since each subject's first scan
-data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(lambda x: (x - x.iloc[0]).dt.days / 30)
+# Delta_Baseline: days since each subject's first scan
+data['Delta_Baseline'] = data.groupby('PTID')['Date'].transform(lambda x: (x - x.iloc[0]).dt.days)
 
 # Time in months (ceiling, matching longitudinal_data.py)
 data['Time'] = np.ceil(data['Delta_Baseline']).astype(int)
@@ -82,7 +77,7 @@ mean_hmuse = hmuse_stats['mean']
 std_hmuse = hmuse_stats['std']
 
 # The stats were saved in the column order of training data; use the same cols
-hmuse_df = data.filter(regex=r'^MUSE_')
+hmuse_df = data.filter(regex=r'^DLMUSE_')
 for i, col in enumerate(hmuse_df.columns):
     data[col] = (data[col] - mean_hmuse[i]) / std_hmuse[i]
 
@@ -101,7 +96,7 @@ std_age  = norm_stats['Age']['std']
 mean_bag = norm_stats['BAG']['mean']
 std_bag  = norm_stats['BAG']['std']
 
-data['Age.x'] = (data['Age.x'] - mean_age) / std_age
+data['Age'] = (data['Age'] - mean_age) / std_age
 data['BAG'] = (data['BAG'] - mean_bag) / std_bag
 
 print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
@@ -111,9 +106,9 @@ print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 # 7. Encode categorical variables (matching training pipeline)
 # ---------------------------------------------------------------------------
 # Rename .x-suffixed columns that originated from the ACCORD merge
-rename_map_cols = {'PTID.x': 'PTID', 'Sex.x': 'Sex', 'Age.x': 'Age'}
+rename_map_cols = {'PTID.x': 'PTID', 'Sex': 'Sex', 'Age': 'Age'}
 data = data.rename(columns={k: v for k, v in rename_map_cols.items() if k in data.columns})
-
+data_x
 if data['Sex'].dtype == object:
     data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 

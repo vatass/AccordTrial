@@ -11,7 +11,11 @@ from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
+<<<<<<< HEAD
 def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse):
+=======
+def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse, genomic, followup, derivedroi,  visualize=False):
+>>>>>>> claude/store-predictions-plotting-1owH5
     '''
     subjects: list of the subject ids
     dataframe: dataframe with all the data
@@ -24,9 +28,25 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     data_x, data_y, data_xbase = [], [], []
 
     samples = {'PTID': [], 'X': [], 'Y': []}
+<<<<<<< HEAD
 
     # remove the PTID from the features!
     features.remove('PTID.x')
+=======
+    covariates = {'PTID': [], 'Age': [], 'BaselineDiagnosis': [], 'BaselineAge': [], 'Sex': [] , 'APOE4_Alleles': [], 'Education_Years': [], 'Status': []}
+
+    longitudinal_covariates = {'PTID': [], 'Time': [], 'Age': [],  'Diagnosis': [], 'Hypertension': [],
+                               'Diabetes': [], 'DLICV': [], 'Study': [], 'Education_Years': [], 'Race': [], 'Sex': [], 'APOE4_Alleles': [], 'SPARE_BA': [], 'SPARE_AD': [], 'MRI_Scanner_Model': [], 
+                               'CDR_Global': [], 'Tau_CSF': [], 'Abeta_CSF': [], 'PTau_CSF': [], 'MMSE_nearest_2.0': [] }
+
+
+    if visualize:
+        vdata = {'target': [], 'class': [], 'time': [], 'id': []}
+        cnt = 0
+
+    # remove the PTID from the features!
+    features.remove('PTID')
+>>>>>>> claude/store-predictions-plotting-1owH5
     features.remove('Delta_Baseline')
     features.remove('Time')
     # hmuse = [i for i in features if i.startswith('H_MUSE')]
@@ -41,14 +61,35 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
     for i, subject_id in enumerate(subjects):
 
+<<<<<<< HEAD
         subject = dataframe[dataframe['PTID.x']==subject_id]
         subject_unnorm = dataframeunnorm[dataframeunnorm['PTID.x']==subject_id]
+=======
+        subject = dataframe[dataframe['PTID']==subject_id]
+        subject_unnorm = dataframeunnorm[dataframeunnorm['PTID']==subject_id]
+
+        first_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
+        last_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[-1]
+
+        if first_diagnosis == 0 and last_diagnosis == 0:
+            status = 'Non-Progressor'
+        elif first_diagnosis == 0 and last_diagnosis != 0: 
+            status = 'Progressor'
+        else: 
+            status = 'MCI/Demented Stable'
+>>>>>>> claude/store-predictions-plotting-1owH5
 
         # print(subject)
         for k in range(0, subject.shape[0]):
             samples['PTID'].append(subject_id)
+<<<<<<< HEAD
 
             # print('Baseline Features',  features)
+=======
+            covariates['PTID'].append(subject_id)
+
+            print('Baseline Features',  features)
+>>>>>>> claude/store-predictions-plotting-1owH5
 
             x = subject[features].iloc[0].to_list()
 
@@ -56,6 +97,29 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
             delta = subject['Time'].iloc[k]
             # man_device = subject['MRI_Scanner_Model'].iloc[k]
+<<<<<<< HEAD
+=======
+            diagnosis = subject['Diagnosis_nearest_2.0'].iloc[k]
+            baseline_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
+            baseline_age = subject_unnorm['Age'].iloc[0]
+            age = subject_unnorm['Age'].iloc[k]
+            dlicv = subject_unnorm['DLICV'].iloc[k]
+            study = subject_unnorm['Study'].iloc[k]
+            edu_years = subject['Education_Years'].iloc[k]
+            race = subject_unnorm['Race'].iloc[k]
+            sex = subject['Sex'].iloc[k]
+            apoe4 = subject['APOE4_Alleles'].iloc[k]
+            hypertension = subject_unnorm['Hypertension'].iloc[k]
+            diabetes = subject_unnorm['Diabetes'].iloc[k]
+            spba = subject_unnorm['SPARE_BA'].iloc[k]
+            spad = subject_unnorm['SPARE_AD'].iloc[k]
+            scanner = subject_unnorm['MRI_Scanner_Model'].iloc[k]
+            cdr_global = subject_unnorm['CDR_Global'].iloc[k]
+            tau_csf = subject_unnorm['Tau_CSF'].iloc[k]
+            abeta_csf = subject_unnorm['Abeta_CSF'].iloc[k]
+            ptau_csf = subject_unnorm['PTau_CSF'].iloc[k]
+            mmse = subject_unnorm['MMSE_nearest_2.0'].iloc[k]
+>>>>>>> claude/store-predictions-plotting-1owH5
 
             # print('Delta', delta)
             x.extend([delta])
@@ -64,6 +128,40 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
             # print('Target', target)
             t = subject[target].iloc[k] #.to_list()
 
+<<<<<<< HEAD
+=======
+            print('Target', t)
+            # covariates['MRI_Scanner_Model'].append(man_device)
+            covariates['Age'].append(age)
+            covariates['BaselineDiagnosis'].append(baseline_diagnosis)
+            covariates['BaselineAge'].append(baseline_age)
+            covariates['Sex'].append(sex) 
+            covariates['APOE4_Alleles'].append(apoe4)
+            covariates['Education_Years'].append(edu_years) 
+            covariates['Status'].append(status)
+                                                 
+            longitudinal_covariates['PTID'].append(subject_id)
+            longitudinal_covariates['Time'].append(delta)
+            longitudinal_covariates['Age'].append(age)
+            longitudinal_covariates['Diagnosis'].append(diagnosis)
+            longitudinal_covariates['DLICV'].append(dlicv)
+            longitudinal_covariates['Study'].append(study)
+            longitudinal_covariates['Education_Years'].append(edu_years)
+            longitudinal_covariates['Race'].append(race)
+            longitudinal_covariates['Sex'].append(sex)
+            longitudinal_covariates['APOE4_Alleles'].append(apoe4)
+            longitudinal_covariates['Hypertension'].append(hypertension)
+            longitudinal_covariates['Diabetes'].append(diabetes)
+            longitudinal_covariates['SPARE_BA'].append(spba)
+            longitudinal_covariates['SPARE_AD'].append(spba)
+            longitudinal_covariates['MRI_Scanner_Model'].append(scanner)
+            longitudinal_covariates['CDR_Global'].append(cdr_global)
+            longitudinal_covariates['Tau_CSF'].append(tau_csf)
+            longitudinal_covariates['PTau_CSF'].append(ptau_csf)
+            longitudinal_covariates['Abeta_CSF'].append(abeta_csf)
+            longitudinal_covariates['MMSE_nearest_2.0'].append(mmse)
+
+>>>>>>> claude/store-predictions-plotting-1owH5
             samples['X'].append(x)
             samples['Y'].append(t.tolist())
 
@@ -78,7 +176,11 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     assert len(samples['PTID']) == len(samples['X'])
     assert len(samples['X']) == len(samples['Y'])
 
+<<<<<<< HEAD
     return samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt
+=======
+    return samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covariates, longitudinal_covariates
+>>>>>>> claude/store-predictions-plotting-1owH5
 
 """**Data Selection**
 1. Read Data and remove all ADNI Screening and BLSA 1.5 T
@@ -91,6 +193,7 @@ data_dir = './data/'
 
 data = pd.read_csv('ACCORD_MARCH_enriched.csv')
 
+<<<<<<< HEAD
 rename_map = {f'X{i}': f'MUSE_Volume_{i}' for i in range(4, 208) if f'X{i}' in data.columns}
 data = data.rename(columns=rename_map)
 print(f'Renamed {len(rename_map)} columns (X4–X207 → MUSE_Volume_4–MUSE_Volume_207)')
@@ -101,12 +204,17 @@ data['Date.x'] = data['Date.x'].astype('datetime64[ns]')
 # Sort by subject and visit date to ensure correct temporal ordering
 data = data.sort_values(['PTID.x', 'Date.x']).reset_index(drop=True)
 
+=======
+data['Date.x'] = data['Date.x'].astype('datetime64[ns]')
+
+>>>>>>> claude/store-predictions-plotting-1owH5
 # Drop rows missing all H_MUSE ROIs
 hmuse = list(data.filter(regex=r'^MUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
 print(f'After MUSE NaN removal: {data["PTID.x"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # 6. Compute Delta_Baseline: days from each subject's first acquisition date
 # ---------------------------------------------------------------------------
 
@@ -114,6 +222,11 @@ data['Delta_Baseline'] = data.groupby('PTID.x')['Date.x'].transform(
     lambda x: (x - x.min()).dt.days
 )
 
+=======
+# 6. Fix Delta Baseline (first acquisition = 0)
+# ---------------------------------------------------------------------------
+
+>>>>>>> claude/store-predictions-plotting-1owH5
 def delta_baseline_fix(data):
     for pt in data['PTID.x'].unique():
         pt_indices = data[data['PTID.x'] == pt].index
@@ -133,7 +246,11 @@ data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
 # Remove duplicate Time entries per subject
 data = data.groupby(['PTID.x', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
+<<<<<<< HEAD
 print(f'Subjects after time deduplication: {data["PTID.x"].nunique()}')
+=======
+print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
+>>>>>>> claude/store-predictions-plotting-1owH5
 
 data_unnorm = data.copy()
 
@@ -162,7 +279,11 @@ data = data[data['Time'] >= 0]
 # ---------------------------------------------------------------------------
 # 9. BAG = SPARE_BA - Age  (computed before normalization)
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 data['BAG'] = data['SPARE_BA'] - data['Age.x']
+=======
+data['BAG'] = data['SPARE_BA'] - data['Age']
+>>>>>>> claude/store-predictions-plotting-1owH5
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
@@ -183,18 +304,30 @@ std_spareba  = normalization_stats['SPARE_BA']['std']
 mean_bag     = normalization_stats['BAG']['mean']
 std_bag      = normalization_stats['BAG']['std']
 
+<<<<<<< HEAD
 data['Age.x']      = (data['Age.x']      - mean_age)     / std_age
+=======
+data['Age']      = (data['Age']      - mean_age)     / std_age
+>>>>>>> claude/store-predictions-plotting-1owH5
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
 data['BAG']      = (data['BAG']      - mean_bag)     / std_bag
 
 data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
+<<<<<<< HEAD
 data['Sex.x'].replace(['M', 'F'], [0, 1], inplace=True)
+=======
+data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
+>>>>>>> claude/store-predictions-plotting-1owH5
 
 print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
+<<<<<<< HEAD
 clinical_features = ['Sex.x', 'BAG', 'PTID.x', 'Delta_Baseline', 'Time']
+=======
+clinical_features = ['Sex', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
+>>>>>>> claude/store-predictions-plotting-1owH5
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
@@ -202,6 +335,7 @@ for cf in clinical_features:
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
 features = [name for name in data.columns if name.startswith('MUSE_Volume') and int(name[12:]) < 300]
+<<<<<<< HEAD
 print(features)
 features.extend(clinical_features)
 
@@ -213,4 +347,17 @@ all_subjects = list(data['PTID.x'].unique())
 samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt  = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse)
 
 samples_df = pd.DataFrame(data=samples)
+=======
+features.extend(clinical_features)
+
+target = ['BAG']
+
+samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+
+# samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt = create_n_acquisition_temporal_dataset(n=3, subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+
+samples_df = pd.DataFrame(data=samples)
+longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
+# longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+>>>>>>> claude/store-predictions-plotting-1owH5
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')

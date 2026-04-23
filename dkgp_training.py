@@ -131,8 +131,13 @@ test_ptids_list = test_data_raw['PTID'].tolist()
 # Time is the last element of the feature vector in X
 test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_data_raw['X']]
 
+<<<<<<< HEAD
 logger.info(f'Train data shape: {train_x.shape}')
 logger.info(f'Test data shape: {test_x.shape}')
+=======
+print('Train data shape:', train_x.shape)
+print('Test data shape:', test_x.shape)
+>>>>>>> claude/store-predictions-plotting-1owH5
 # Process data
 train_x, train_y, test_x, test_y = process_temporal_singletask_data(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
 
@@ -205,8 +210,13 @@ optimizer = torch.optim.Adam([
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
 # Training loop
+<<<<<<< HEAD
 iterations = 1000
 logger.info(f"Training for {iterations} iterations...")
+=======
+iterations = 200
+print(f"Training for {iterations} iterations...")
+>>>>>>> claude/store-predictions-plotting-1owH5
 for i in range(iterations):
     deepkernelmodel.train()
     likelihood.train()

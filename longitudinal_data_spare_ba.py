@@ -341,8 +341,11 @@ all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
 data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'data_spare_ba_allstudies.csv', index=False)
-print(f'Saved: {data_dir}data_spare_ba_allstudies.csv')
+data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
+print(f'Saved: {data_dir}data_bag_allstudies.csv')
+
+sys.exit(0)
+
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
