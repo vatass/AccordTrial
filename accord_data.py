@@ -136,29 +136,49 @@ if not os.path.exists(features_pkl_path):
 with open(features_pkl_path, 'rb') as f:
     train_features = pickle.load(f)
 
-model_features = [c for c in train_features if c not in ('PTID', 'Delta_Baseline')]
+# Baseline feature columns = training features minus bookkeeping columns
+# Time is excluded here and appended last (matching create_baseline_temporal_dataset)
+base_feature_cols = [c for c in train_features if c not in ('PTID', 'Delta_Baseline', 'Time')]
 
-missing = [c for c in model_features if c not in data.columns]
+missing = [c for c in base_feature_cols if c not in data.columns]
 if missing:
     raise ValueError(f'ACCORD data is missing columns required by the model: {missing}')
 
+# Drop rows with NaN in any model feature before building samples
+all_needed = base_feature_cols + ['Time', 'BAG']
 os.makedirs(data_dir, exist_ok=True)
 data['PTID'] = data['PTID'].astype(str)
-output_cols = ['PTID'] + model_features
-data = data[output_cols]
-
-# Drop any rows with NaN in model features (e.g. missing SPARE_BA → NaN BAG)
 before = data['PTID'].nunique()
-data = data.dropna(subset=model_features)
+data = data.dropna(subset=all_needed)
 after = data['PTID'].nunique()
 if before != after:
-    print(f'Dropped {before - after} subjects with NaN in model features '
-          f'(e.g. missing SPARE_BA/Sex)')
+    print(f'Dropped {before - after} subjects with NaN in model features')
 
-output_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
-data.to_csv(output_path, index=False)
-print(f'Saved processed ACCORD data: {output_path}')
-print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
-print(f'Feature columns (excl. PTID): {len(model_features)}  '
-      f'— matches training feature count')
+# ---------------------------------------------------------------------------
+# 11. Build subjectsamples format expected by dkgp_training.py
+#     PTID | X (string list: baseline_features + [time_months]) | Y ([BAG])
+#     One row per (subject, timepoint). Baseline features come from Time=0.
+# ---------------------------------------------------------------------------
+data = data.sort_values(by=['PTID', 'Time']).reset_index(drop=True)
+
+samples = {'PTID': [], 'X': [], 'Y': []}
+for ptid, subject in data.groupby('PTID', sort=False):
+    baseline = subject.iloc[0]
+    base_feats = baseline[base_feature_cols].tolist()
+    for _, row in subject.iterrows():
+        x = base_feats + [float(row['Time'])]
+        y = [float(row['BAG'])]
+        samples['PTID'].append(ptid)
+        samples['X'].append(str(x))
+        samples['Y'].append(str(y))
+
+samples_df = pd.DataFrame(samples)
+
+accord_samples_path = os.path.join(data_dir, 'subjectsamples_bag_accord.csv')
+samples_df.to_csv(accord_samples_path, index=False)
+print(f'Saved: {accord_samples_path}')
+print(f'Final shape: {samples_df.shape}  ({samples_df["PTID"].nunique()} subjects, '
+      f'{len(samples_df)} observations)')
+print(f'Feature vector length (incl. time): {len(base_feature_cols) + 1}')
+
 
