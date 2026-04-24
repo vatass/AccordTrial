@@ -25,11 +25,8 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     data_x, data_y, data_xbase = [], [], []
 
     samples = {'PTID': [], 'X': [], 'Y': []}
-    covariates = {'PTID': [], 'Age': [], 'BaselineDiagnosis': [], 'BaselineAge': [], 'Sex': [] , 'APOE4_Alleles': [], 'Education_Years': [], 'Status': []}
 
-    longitudinal_covariates = {'PTID': [], 'Time': [], 'Age': [],  'Diagnosis': [], 'Hypertension': [],
-                               'Diabetes': [], 'DLICV': [], 'Study': [], 'Education_Years': [], 'Race': [], 'Sex': [], 'APOE4_Alleles': [], 'SPARE_BA': [], 'SPARE_AD': [], 'MRI_Scanner_Model': [], 
-                               'CDR_Global': [], 'Tau_CSF': [], 'Abeta_CSF': [], 'PTau_CSF': [], 'MMSE_nearest_2.0': [] }
+    longitudinal_covariates = {'PTID': [], 'Time': [], 'Age': [],  'Diagnosis': [], 'Study': [], 'SPARE_BA': [], 'DLICV': [], 'Race': [], 'Sex':[] }
 
 
     if visualize:
@@ -55,20 +52,10 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
         subject = dataframe[dataframe['PTID']==subject_id]
         subject_unnorm = dataframeunnorm[dataframeunnorm['PTID']==subject_id]
 
-        first_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
-        last_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[-1]
-
-        if first_diagnosis == 0 and last_diagnosis == 0:
-            status = 'Non-Progressor'
-        elif first_diagnosis == 0 and last_diagnosis != 0: 
-            status = 'Progressor'
-        else: 
-            status = 'MCI/Demented Stable'
 
         # print(subject)
         for k in range(0, subject.shape[0]):
             samples['PTID'].append(subject_id)
-            covariates['PTID'].append(subject_id)
 
             print('Baseline Features',  features)
 
@@ -78,26 +65,16 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
             delta = subject['Time'].iloc[k]
             # man_device = subject['MRI_Scanner_Model'].iloc[k]
-            diagnosis = subject['Diagnosis_nearest_2.0'].iloc[k]
-            baseline_diagnosis = subject['Diagnosis_nearest_2.0'].iloc[0]
+            diagnosis = subject['DX_AD'].iloc[k]
+            baseline_diagnosis = subject['DX_AD'].iloc[0]
             baseline_age = subject_unnorm['Age'].iloc[0]
             age = subject_unnorm['Age'].iloc[k]
             dlicv = subject_unnorm['DLICV'].iloc[k]
             study = subject_unnorm['Study'].iloc[k]
-            edu_years = subject['Education_Years'].iloc[k]
             race = subject_unnorm['Race'].iloc[k]
             sex = subject['Sex'].iloc[k]
-            apoe4 = subject['APOE4_Alleles'].iloc[k]
-            hypertension = subject_unnorm['Hypertension'].iloc[k]
-            diabetes = subject_unnorm['Diabetes'].iloc[k]
+      
             spba = subject_unnorm['SPARE_BA'].iloc[k]
-            spad = subject_unnorm['SPARE_AD'].iloc[k]
-            scanner = subject_unnorm['MRI_Scanner_Model'].iloc[k]
-            cdr_global = subject_unnorm['CDR_Global'].iloc[k]
-            tau_csf = subject_unnorm['Tau_CSF'].iloc[k]
-            abeta_csf = subject_unnorm['Abeta_CSF'].iloc[k]
-            ptau_csf = subject_unnorm['PTau_CSF'].iloc[k]
-            mmse = subject_unnorm['MMSE_nearest_2.0'].iloc[k]
 
             # print('Delta', delta)
             x.extend([delta])
@@ -107,35 +84,16 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
             t = subject[target].iloc[k] #.to_list()
 
             print('Target', t)
-            # covariates['MRI_Scanner_Model'].append(man_device)
-            covariates['Age'].append(age)
-            covariates['BaselineDiagnosis'].append(baseline_diagnosis)
-            covariates['BaselineAge'].append(baseline_age)
-            covariates['Sex'].append(sex) 
-            covariates['APOE4_Alleles'].append(apoe4)
-            covariates['Education_Years'].append(edu_years) 
-            covariates['Status'].append(status)
-                                                 
+      
             longitudinal_covariates['PTID'].append(subject_id)
             longitudinal_covariates['Time'].append(delta)
             longitudinal_covariates['Age'].append(age)
             longitudinal_covariates['Diagnosis'].append(diagnosis)
             longitudinal_covariates['DLICV'].append(dlicv)
             longitudinal_covariates['Study'].append(study)
-            longitudinal_covariates['Education_Years'].append(edu_years)
             longitudinal_covariates['Race'].append(race)
             longitudinal_covariates['Sex'].append(sex)
-            longitudinal_covariates['APOE4_Alleles'].append(apoe4)
-            longitudinal_covariates['Hypertension'].append(hypertension)
-            longitudinal_covariates['Diabetes'].append(diabetes)
             longitudinal_covariates['SPARE_BA'].append(spba)
-            longitudinal_covariates['SPARE_AD'].append(spba)
-            longitudinal_covariates['MRI_Scanner_Model'].append(scanner)
-            longitudinal_covariates['CDR_Global'].append(cdr_global)
-            longitudinal_covariates['Tau_CSF'].append(tau_csf)
-            longitudinal_covariates['PTau_CSF'].append(ptau_csf)
-            longitudinal_covariates['Abeta_CSF'].append(abeta_csf)
-            longitudinal_covariates['MMSE_nearest_2.0'].append(mmse)
 
             samples['X'].append(x)
             samples['Y'].append(t.tolist())
@@ -151,7 +109,7 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     assert len(samples['PTID']) == len(samples['X'])
     assert len(samples['X']) == len(samples['Y'])
 
-    return samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covariates, longitudinal_covariates
+    return samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, longitudinal_covariates
 
 """**Data Selection**
 1. Read Data and remove all ADNI Screening and BLSA 1.5 T
@@ -196,9 +154,9 @@ print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
 data = data[data['Study'] != 'BIOCARD']
 
-# data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
-# data = data[data['Visit_Code'] != 'ADNI Screening']
-# data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
+data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
+data = data[data['Visit_Code'] != 'ADNI Screening']
+data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
 
 # Forward-fill missing diagnosis
 data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
@@ -343,12 +301,9 @@ additional_data = pd.read_csv('additional_data.csv')
 
 print('Studies in additional data:', additional_data['Study'].unique())
 print('Columns in additional data:', additional_data.columns.tolist())
-
 print('Columns in data', data.columns.tolist())
 
-
 print(data['delta_days_imaging_baseline'].describe())
-
 data = data.rename(columns={'delta_days_imaging_baseline': 'Delta_Baseline'})
 
 # ---------------------------------------------------------------------------
@@ -378,7 +333,6 @@ data['Delta_Baseline'] = data['Delta_Baseline'] / 30
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
 
-
 # Concatenate
 data = pd.concat([data, additional_data], ignore_index=True)
 
@@ -398,7 +352,6 @@ for _study in sorted(data['Study'].unique()):
     print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
 
 data_unnorm = data.copy()
-
 
 print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
@@ -454,7 +407,6 @@ data['Age']      = (data['Age']      - mean_age)     / std_age
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
 data['BAG']      = (data['BAG']      - mean_bag)     / std_bag
 
-data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
 print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
@@ -478,24 +430,20 @@ print(f'Saved: {data_dir}longitudinal_covariates_bag_allstudies.csv')
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
 # ---------------------------------------------------------------------------
-features = [name for name in data.columns if name.startswith('MUSE_Volume') and int(name[12:]) < 300]
+features = [name for name in data.columns if name.startswith('DLMUSE_') and int(name[7:]) < 300]
 features.extend(clinical_features)
 
 with open(data_dir + 'features_bag.pkl', 'wb') as f:
     pickle.dump(features, f)
 
-
 target = ['BAG']
 
-samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, covs, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
-
-# samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt = create_n_acquisition_temporal_dataset(n=3, subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, longitudinal_covariates = create_baseline_temporal_dataset(subjects=all_subjects, dataframe=data, dataframeunnorm=data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
 # longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
-sys.exit(0)
 
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
