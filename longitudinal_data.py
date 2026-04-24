@@ -404,20 +404,17 @@ print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
 
 # ---------------------------------------------------------------------------
-# 7. Z-score MUSE ROIs using pre-computed combined normalization stats
+# 7. Z-score MUSE ROIs — compute stats from current data and save
 # ---------------------------------------------------------------------------
 subjects_df_hmuse = data.filter(regex=r'^DLMUSE_')
 
+mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
+std_hmuse  = subjects_df_hmuse.std(axis=0).tolist()
 
 muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
-if not os.path.exists(muse_pkl):
-    raise FileNotFoundError(
-        f'{muse_pkl} not found. Run compute_combined_normalization_stats.py first.')
-print(f'Loading MUSE stats from: {muse_pkl}')
-with open(muse_pkl, 'rb') as f:
-    muse_stats = pickle.load(f)
-mean_hmuse = muse_stats['mean']
-std_hmuse  = muse_stats['std']
+with open(muse_pkl, 'wb') as f:
+    pickle.dump({'mean': mean_hmuse, 'std': std_hmuse}, f)
+print(f'MUSE stats computed and saved to: {muse_pkl}')
 
 for i, c in enumerate(subjects_df_hmuse.columns):
     data[c] = (subjects_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
@@ -437,22 +434,21 @@ data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 10. Normalize clinical variables using pre-computed combined stats
+# 10. Normalize clinical variables — compute stats from current data and save
 # ---------------------------------------------------------------------------
-norm_pkl = data_dir + 'normalization_stats.pkl'
-if not os.path.exists(norm_pkl):
-    raise FileNotFoundError(
-        f'{norm_pkl} not found. Run compute_combined_normalization_stats.py first.')
-print(f'Loading normalization stats from: {norm_pkl}')
-with open(norm_pkl, 'rb') as f:
-    normalization_stats = pickle.load(f)
+mean_age,     std_age     = data['Age'].mean(),      data['Age'].std()
+mean_spareba, std_spareba = data['SPARE_BA'].mean(),  data['SPARE_BA'].std()
+mean_bag,     std_bag     = data['BAG'].mean(),       data['BAG'].std()
 
-mean_age     = normalization_stats['Age']['mean']
-std_age      = normalization_stats['Age']['std']
-mean_spareba = normalization_stats['SPARE_BA']['mean']
-std_spareba  = normalization_stats['SPARE_BA']['std']
-mean_bag     = normalization_stats['BAG']['mean']
-std_bag      = normalization_stats['BAG']['std']
+normalization_stats = {
+    'Age':      {'mean': mean_age,     'std': std_age},
+    'SPARE_BA': {'mean': mean_spareba, 'std': std_spareba},
+    'BAG':      {'mean': mean_bag,     'std': std_bag},
+}
+norm_pkl = data_dir + 'normalization_stats.pkl'
+with open(norm_pkl, 'wb') as f:
+    pickle.dump(normalization_stats, f)
+print(f'Normalization stats computed and saved to: {norm_pkl}')
 
 data['Age']      = (data['Age']      - mean_age)     / std_age
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
