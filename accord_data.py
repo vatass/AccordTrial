@@ -21,21 +21,34 @@ data_dir = './data/'
 # ---------------------------------------------------------------------------
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
-data = data[data['Study']=='ACCORD']
+data = data[data['Study'] == 'ACCORD']
 
 print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
 
 # ---------------------------------------------------------------------------
-# 2. Basic cleanup
+# 2. Merge SPARE_BA by MRID
+# ---------------------------------------------------------------------------
+spare_ba = pd.read_csv('SPARE_BA_istaging_3_0_all.csv')
+if 'SPARE_BA' in data.columns:
+    data = data.drop(columns=['SPARE_BA'])
+data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
+n_matched = data['SPARE_BA'].notna().sum()
+print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
+
+# ---------------------------------------------------------------------------
+# 3. Extract date from MRID  (format: <ID>-YYYYMMDD, e.g. 611H90402-20080612)
+# ---------------------------------------------------------------------------
+data['Date'] = pd.to_datetime(
+    data['MRID'].str.split('-').str[-1], format='%Y%m%d', errors='coerce'
+)
+n_parsed = data['Date'].notna().sum()
+print(f'Date parsed from MRID: {n_parsed}/{len(data)} rows')
+
+# ---------------------------------------------------------------------------
+# 4. Basic cleanup
 # ---------------------------------------------------------------------------
 data = data.drop_duplicates(subset=['PTID', 'Date'], keep='first')
-
-# Date.x is stored as integer YYYYMMDD (e.g. 20040121) — parse explicitly
-data['Date'] = pd.to_datetime(data['Date'].astype(str), format='%Y%m%d')
-
-print(f'SPARE_BA available: {data["SPARE_BA"].notna().sum()}/{len(data)} rows')
-print(f'SPARE_AD available: {data["SPARE_AD"].notna().sum()}/{len(data)} rows')
 
 # Drop rows missing all MUSE volume ROIs
 muse_volume_cols = [c for c in data.columns if c.startswith('DLMUSE_')]
@@ -44,29 +57,31 @@ if muse_volume_cols:
 print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
 # ---------------------------------------------------------------------------
-# 3. Sort and compute Time (months from first acquisition per subject)
+# 5. Sort and compute Time (months from first acquisition per subject)
 # ---------------------------------------------------------------------------
 data = data.sort_values(by=['PTID', 'Date'])
 
 # Delta_Baseline: days since each subject's first scan
-data['Delta_Baseline'] = data.groupby('PTID')['Date'].transform(lambda x: (x - x.iloc[0]).dt.days)
+data['Delta_Baseline'] = data.groupby('PTID')['Date'].transform(
+    lambda x: (x - x.iloc[0]).dt.days
+)
 
-# Time in months (ceiling, matching longitudinal_data.py)
-data['Time'] = np.ceil(data['Delta_Baseline']).astype(int)
+# Time in months (ceiling division, matching longitudinal_data.py)
+data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 
 # Remove duplicate Time entries per subject (keep first occurrence)
-data = data.groupby(['PTID.x', 'Time'], as_index=False).agg(lambda x: x.iloc[0])
-print(f'Subjects after time deduplication: {data["PTID.x"].nunique()}')
+data = data.groupby(['PTID', 'Time'], as_index=False).agg(lambda x: x.iloc[0])
+print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
 print(f'Total acquisitions: {data.shape[0]}')
 
 # ---------------------------------------------------------------------------
-# 4. Compute BAG = SPARE_BA - Age  (before normalization)
+# 6. Compute BAG = SPARE_BA - Age  (before normalization)
 # ---------------------------------------------------------------------------
-data['BAG'] = data['SPARE_BA'] - data['Age.x']
+data['BAG'] = data['SPARE_BA'] - data['Age']
 print(f'BAG — mean: {data["BAG"].mean():.2f}, std: {data["BAG"].std():.2f}')
 
 # ---------------------------------------------------------------------------
-# 5. Normalize MUSE volumes using pre-computed training stats
+# 7. Normalize MUSE volumes using pre-computed training stats
 # ---------------------------------------------------------------------------
 hmuse_stats_path = os.path.join(data_dir, '145_MUSE_allstudies_mean_std.pkl')
 print(f'Loading H_MUSE normalization stats from: {hmuse_stats_path}')
@@ -74,9 +89,8 @@ with open(hmuse_stats_path, 'rb') as f:
     hmuse_stats = pickle.load(f)
 
 mean_hmuse = hmuse_stats['mean']
-std_hmuse = hmuse_stats['std']
+std_hmuse  = hmuse_stats['std']
 
-# The stats were saved in the column order of training data; use the same cols
 hmuse_df = data.filter(regex=r'^DLMUSE_')
 for i, col in enumerate(hmuse_df.columns):
     data[col] = (data[col] - mean_hmuse[i]) / std_hmuse[i]
@@ -84,7 +98,7 @@ for i, col in enumerate(hmuse_df.columns):
 print(f'MUSE volumes normalized ({len(hmuse_df.columns)} ROIs)')
 
 # ---------------------------------------------------------------------------
-# 6. Normalize Age and BAG using pre-computed training stats
+# 8. Normalize Age and BAG using pre-computed training stats
 # ---------------------------------------------------------------------------
 norm_stats_path = os.path.join(data_dir, 'normalization_stats.pkl')
 print(f'Loading Age/BAG normalization stats from: {norm_stats_path}')
@@ -103,12 +117,8 @@ print(f'Age normalized  — training mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'BAG normalized  — training mean={mean_bag:.2f}, std={std_bag:.2f}')
 
 # ---------------------------------------------------------------------------
-# 7. Encode categorical variables (matching training pipeline)
+# 9. Encode categorical variables (matching training pipeline)
 # ---------------------------------------------------------------------------
-# Rename .x-suffixed columns that originated from the ACCORD merge
-rename_map_cols = {'PTID.x': 'PTID', 'Sex': 'Sex', 'Age': 'Age'}
-data = data.rename(columns={k: v for k, v in rename_map_cols.items() if k in data.columns})
-data_x
 if data['Sex'].dtype == object:
     data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
@@ -116,9 +126,7 @@ if 'Education_Years' in data.columns and data['Education_Years'].dtype != int:
     data['Education_Years'] = (data['Education_Years'] > 16).astype(int)
 
 # ---------------------------------------------------------------------------
-# 8. Select exactly the features used during training
-#    Load features_bag.pkl (saved by longitudinal_data.py) so the column
-#    set and order are guaranteed to match the trained model.
+# 10. Select exactly the features used during training
 # ---------------------------------------------------------------------------
 features_pkl_path = os.path.join(data_dir, 'features_bag.pkl')
 if not os.path.exists(features_pkl_path):
@@ -128,11 +136,7 @@ if not os.path.exists(features_pkl_path):
 with open(features_pkl_path, 'rb') as f:
     train_features = pickle.load(f)
 
-# train_features = [MUSE_Volume_* <300, Sex, BAG, PTID, Delta_Baseline, Time]
-# Model input = train_features minus PTID and Delta_Baseline (Time kept as
-# last feature; the inference script overwrites it per future timepoint).
 model_features = [c for c in train_features if c not in ('PTID', 'Delta_Baseline')]
-# model_features = [MUSE_Volume_* <300, Sex, BAG, Time]  (148 - 2 = 146... + Time = 148 total with PTID excluded)
 
 missing = [c for c in model_features if c not in data.columns]
 if missing:
@@ -144,7 +148,6 @@ output_cols = ['PTID'] + model_features
 data = data[output_cols]
 
 # Drop any rows with NaN in model features (e.g. missing SPARE_BA → NaN BAG)
-# A single NaN input causes the GP kernel matrix to produce NaN for all predictions
 before = data['PTID'].nunique()
 data = data.dropna(subset=model_features)
 after = data['PTID'].nunique()
@@ -158,3 +161,4 @@ print(f'Saved processed ACCORD data: {output_path}')
 print(f'Final shape: {data.shape}  ({data["PTID"].nunique()} subjects)')
 print(f'Feature columns (excl. PTID): {len(model_features)}  '
       f'— matches training feature count')
+
