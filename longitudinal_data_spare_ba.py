@@ -351,7 +351,7 @@ print(f'Saved: {data_dir}data_bag_allstudies.csv')
 # ---------------------------------------------------------------------------
 undatable_studies = [
     'BLSA', 'GSP', 'HCP-Aging', 'HCP-YA', 'OASIS3', 'OASIS4',
-    'PreventAD', 'SHIP', 'UKBIOBANK', 'WRAP', 'WHICAP',
+    'PreventAD', 'SHIP', 'UKBIOBANK', 'WRAP', 'WHICAP', 'WRAP', 'PENN' 
 ]
 additional_data = data[data['Study'].isin(undatable_studies)].copy()
 if not additional_data.empty:

@@ -163,6 +163,14 @@ data_dir = './data/'
 
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
+spare_ba = pd.read_csv('SPARE_BA_istaging_3_0_all.csv')
+
+print(spare_ba.head())
+
+sys.exit() 
+
+
+
 print(f'Loaded: {data.shape}')
 print(data['MRID'].head(10))
 print(data['MRID'].tail(10))
@@ -254,7 +262,6 @@ print(f'Total studies with multiple acquisitions: {len(studies_with_multiple)}')
 data = data[data['Study'].isin(studies_with_multiple)]
 print(f'Total subjects after study filter: {data["PTID"].nunique()}')
 
-
 # MRID formats differ across the 25 iSTAGING studies.  The naive
 # split('-')[-1] only yields a valid YYYYMMDD for a handful of cohorts
 # (ACCORD, ADNI_DOD, CARDIA, SPRINT, WHIMS, lookAHEAD).  All others
@@ -306,6 +313,7 @@ for _study in sorted(data['Study'].unique()):
 print()
 
 print('\n=== MRID samples for studies with unparsed dates ===')
+studies_with_unparsed_dates = []
 for _study in sorted(data['Study'].unique()):
     _mask = data['Study'] == _study
     _parsed = data.loc[_mask, 'Date'].notna().sum()
@@ -313,56 +321,25 @@ for _study in sorted(data['Study'].unique()):
     if _parsed < _total:
         _unparsed_mrids = data.loc[_mask & data['Date'].isna(), 'MRID'].dropna().head(5).tolist()
         print(f'  {_study} ({_total - _parsed} unparsed): {_unparsed_mrids}')
+        studies_with_unparsed_dates.append(_study)
 print()
 
-# Remove studies from which no date can be extracted at all
-studies_with_any_date = data.groupby('Study')['Date'].apply(lambda x: x.notna().any())
-studies_no_dates = studies_with_any_date[~studies_with_any_date].index.tolist()
-if studies_no_dates:
-    print(f'Removing studies with no extractable dates: {studies_no_dates}')
-    data = data[~data['Study'].isin(studies_no_dates)]
-    print(f'Subjects after removing undated studies: {data["PTID"].nunique()}')
-else:
-    print('All studies have at least one extractable date.')
 
+print('Studies that I cannot parse the date', studies_with_unparsed_dates)
+data = data[~data['Study'].isin(studies_with_unparsed_dates)]
+print('Remaining studies', data['Study'].unique())
 
 additional_data = pd.read_csv('additional_data.csv')
 
 print('Studies in additional data:', additional_data['Study'].unique())
 print('Columns in additional data:', additional_data.columns.tolist())
 
-# Extract dates for additional_data and remove studies with no extractable dates
-additional_data['Date'] = [
-    extract_date_from_mrid(mrid, study)
-    for mrid, study in zip(additional_data['MRID'], additional_data['Study'])
-]
-add_studies_with_any_date = additional_data.groupby('Study')['Date'].apply(lambda x: x.notna().any())
-add_studies_no_dates = add_studies_with_any_date[~add_studies_with_any_date].index.tolist()
-if add_studies_no_dates:
-    print(f'Removing from additional_data studies with no extractable dates: {add_studies_no_dates}')
-    additional_data = additional_data[~additional_data['Study'].isin(add_studies_no_dates)]
-    print(f'additional_data subjects after date filter: {additional_data["PTID"].nunique()}')
-else:
-    print('All studies in additional_data have at least one extractable date.')
+print('Columns in data', data.columns.tolist())
 
-# Concatenate
-data = pd.concat([data, additional_data], ignore_index=True)
 
-# Validation
-n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
-assert n_dup == 0, f'{n_dup} duplicate (PTID, MRID) pairs found after concat!'
-print('Validation passed: no duplicate (PTID, MRID) pairs.')
+print(data['delta_days_imaging_baseline'].describe())
 
-print('\n=== Post-concatenation summary ===')
-print(f'Total rows    : {data.shape[0]}')
-print(f'Total subjects: {data["PTID"].nunique()}')
-print(f'Total studies : {data["Study"].nunique()}')
-print('\nPer-study breakdown:')
-for _study in sorted(data['Study'].unique()):
-    _n_subj = data[data['Study'] == _study]['PTID'].nunique()
-    _n_rows = (data['Study'] == _study).sum()
-    print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
-
+data = data.rename(columns={'delta_days_imaging_baseline': 'Delta_Baseline'})
 
 # ---------------------------------------------------------------------------
 # 6. Fix Delta Baseline (first acquisition = 0)
@@ -390,6 +367,25 @@ data['Delta_Baseline'] = data['Delta_Baseline'] / 30
 # Remove duplicate Time entries per subject
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
+
+
+# Concatenate
+data = pd.concat([data, additional_data], ignore_index=True)
+
+# Validation
+n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
+assert n_dup == 0, f'{n_dup} duplicate (PTID, MRID) pairs found after concat!'
+print('Validation passed: no duplicate (PTID, MRID) pairs.')
+
+print('\n=== Post-concatenation summary ===')
+print(f'Total rows    : {data.shape[0]}')
+print(f'Total subjects: {data["PTID"].nunique()}')
+print(f'Total studies : {data["Study"].nunique()}')
+print('\nPer-study breakdown:')
+for _study in sorted(data['Study'].unique()):
+    _n_subj = data[data['Study'] == _study]['PTID'].nunique()
+    _n_rows = (data['Study'] == _study).sum()
+    print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
 
 data_unnorm = data.copy()
 
