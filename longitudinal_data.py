@@ -177,7 +177,6 @@ data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
 n_matched = data['SPARE_BA'].notna().sum()
 print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
 
-
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
 # ---------------------------------------------------------------------------
@@ -195,7 +194,6 @@ data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
 # Prefix PTID for AIBL and PENN to avoid collisions
 data.loc[data['Study'] == 'AIBL', 'PTID'] = 'aibl' + data.loc[data['Study'] == 'AIBL', 'PTID'].astype(str)
 data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == 'PENN', 'PTID'].astype(str)
-
 
 
 # Drop rows missing all H_MUSE ROIs
