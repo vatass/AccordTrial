@@ -43,12 +43,6 @@ print(f'Loaded: {data.shape}')
 
 print(data['MRID'].unique())
 
-for u in data['MRID'].unique(): 
-    print(u)
-
-sys.exit(0)
-
-
 # ---------------------------------------------------------------------------
 # 2. Merge SPARE_BA by MRID
 # ---------------------------------------------------------------------------
