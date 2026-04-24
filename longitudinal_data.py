@@ -163,23 +163,19 @@ data_dir = './data/'
 
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
-print(data['MRID'].nunique())
+print(f'Loaded: {data.shape}')
+print(f'Unique MRIDs in data: {data["MRID"].nunique()}')
 
 spare_ba = pd.read_csv('SPARE_BA_istaging_3_0_all.csv')
+print(f'Unique MRIDs in SPARE_BA file: {spare_ba["MRID"].nunique()}')
 
-print(spare_ba['MRID'].nunique())
+# Drop existing SPARE_BA if present to avoid duplicates after merge
+if 'SPARE_BA' in data.columns:
+    data = data.drop(columns=['SPARE_BA'])
 
-print(spare_ba.head())
-
-sys.exit() 
-
-
-
-print(f'Loaded: {data.shape}')
-print(data['MRID'].head(10))
-print(data['MRID'].tail(10))
-
-print(data['MRID'].nunique())
+data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
+n_matched = data['SPARE_BA'].notna().sum()
+print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
 
 
 # ---------------------------------------------------------------------------
