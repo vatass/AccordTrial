@@ -208,8 +208,6 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 iterations = 1000
 logger.info(f"Training for {iterations} iterations...")
 for i in range(iterations):
-    deepkernelmodel.train()
-    likelihood.train()
     optimizer.zero_grad()
     output = deepkernelmodel(train_x)
     loss = -mll(output, train_y)
