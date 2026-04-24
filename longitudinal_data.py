@@ -1,5 +1,6 @@
 '''
-ACCORD - CN Digital Twin - DKGP
+ACCORD Trial  - CN Digital Twin - DKGP
+iSTAGING 3.0 
 '''
 
 import os
@@ -177,13 +178,16 @@ data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
 n_matched = data['SPARE_BA'].notna().sum()
 print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
 
+accord_data = data[data['Study']=='ACCORD']
+
+print('ACCORD Study:', accord_data['PTID'].nunique())
+
 # Spot-check: pick a random MRID that exists in spare_ba and verify the value survived the merge
 _sample = spare_ba[spare_ba['MRID'].isin(data['MRID'])].sample(1, random_state=42).iloc[0]
 _mrid, _expected = _sample['MRID'], _sample['SPARE_BA']
 _actual = data.loc[data['MRID'] == _mrid, 'SPARE_BA'].iloc[0]
 assert _actual == _expected, f'SPARE_BA mismatch for MRID {_mrid}: got {_actual}, expected {_expected}'
 print(f'Spot-check passed — MRID {_mrid}: SPARE_BA={_actual:.4f} (matches source)')
-
 
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
@@ -395,10 +399,15 @@ for _study in sorted(data['Study'].unique()):
 
 data_unnorm = data.copy()
 
+
+print('Studies', data['Study'].unique())
+print('Subjects', data['PTID'].nunique())
+
 # ---------------------------------------------------------------------------
 # 7. Z-score MUSE ROIs using pre-computed combined normalization stats
 # ---------------------------------------------------------------------------
 subjects_df_hmuse = data.filter(regex=r'^DLMUSE_')
+
 
 muse_pkl = data_dir + '145_MUSE_allstudies_mean_std.pkl'
 if not os.path.exists(muse_pkl):
@@ -417,12 +426,6 @@ for i, c in enumerate(subjects_df_hmuse.columns):
 # 8. Baseline columns
 # ---------------------------------------------------------------------------
 data['Baseline_Age'] = data.groupby('PTID')['Age'].transform('min')
-
-# for col in [c for c in data.columns if c.startswith('DLMUSE_')]:
-#     data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
-
-# for col in ['SPARE_AD', 'SPARE_BA', 'Diagnosis_nearest_2.0']:
-#     data['Baseline_' + col] = data.groupby('PTID')[col].transform('first')
 
 # Keep only non-negative timepoints
 data = data[data['Time'] >= 0]
