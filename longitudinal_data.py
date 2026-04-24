@@ -163,7 +163,11 @@ data_dir = './data/'
 
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
+print(data['MRID'].nunique())
+
 spare_ba = pd.read_csv('SPARE_BA_istaging_3_0_all.csv')
+
+print(spare_ba['MRID'].nunique())
 
 print(spare_ba.head())
 
