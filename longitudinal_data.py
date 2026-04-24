@@ -177,6 +177,14 @@ data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
 n_matched = data['SPARE_BA'].notna().sum()
 print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
 
+# Spot-check: pick a random MRID that exists in spare_ba and verify the value survived the merge
+_sample = spare_ba[spare_ba['MRID'].isin(data['MRID'])].sample(1, random_state=42).iloc[0]
+_mrid, _expected = _sample['MRID'], _sample['SPARE_BA']
+_actual = data.loc[data['MRID'] == _mrid, 'SPARE_BA'].iloc[0]
+assert _actual == _expected, f'SPARE_BA mismatch for MRID {_mrid}: got {_actual}, expected {_expected}'
+print(f'Spot-check passed — MRID {_mrid}: SPARE_BA={_actual:.4f} (matches source)')
+
+
 # ---------------------------------------------------------------------------
 # 2. Basic Filters
 # ---------------------------------------------------------------------------
