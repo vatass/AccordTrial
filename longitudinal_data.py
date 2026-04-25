@@ -154,10 +154,6 @@ print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
 data = data[data['Study'] != 'BIOCARD']
 
-data = data.drop_duplicates(subset=['PTID', 'Visit_Code'], keep='first')
-data = data[data['Visit_Code'] != 'ADNI Screening']
-data = data[data['Visit_Code'] != 'ADNIGO Screening MRI']
-
 # Forward-fill missing diagnosis
 data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
 
@@ -204,11 +200,6 @@ data['DX_AD'].replace(
 cn_mask = data.groupby('PTID')['DX_AD'].apply(lambda x: (x == 0).all())
 data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
 print(f'CN-only subjects: {data["PTID"].nunique()}')
-
-# Encode comorbidities
-# data['Hypertension'].replace(['Hypertension negative/absent', 'Hypertension positive/present'], [0, 1], inplace=True)
-# data['Hyperlipidemia'].replace(['Hyperlipidemia absent', 'Hyperlipidemia recent/active'], [0, 1], inplace=True)
-# data['Diabetes'].replace(['Diabetes negative/absent', 'Diabetes positive/present'], [0, 1], inplace=True)
 
 # ---------------------------------------------------------------------------
 # 5. Keep subjects with >1 acquisition and report per-study counts
