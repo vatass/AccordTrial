@@ -166,6 +166,18 @@ train_y = train_y.squeeze()
 test_y = test_y.squeeze()
 accord_test_y = accord_test_y.squeeze()
 
+# --- NaN guard: drop rows where any feature or target is NaN ---
+nan_x_mask = torch.isnan(train_x).any(dim=1)
+nan_y_mask = torch.isnan(train_y)
+nan_mask = nan_x_mask | nan_y_mask
+if nan_mask.any():
+    logger.warning(f"Dropping {nan_mask.sum().item()} training rows containing NaN "
+                   f"(x_nan={nan_x_mask.sum().item()}, y_nan={nan_y_mask.sum().item()})")
+    train_x = train_x[~nan_mask]
+    train_y = train_y[~nan_mask]
+else:
+    logger.info("No NaN values detected in training data.")
+
 
 # Define model with fixed architecture
 depth = [(train_x.shape[1], int(train_x.shape[1]/2))]
@@ -211,15 +223,17 @@ deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 # Training loop
 iterations = 1000
 logger.info(f"Training for {iterations} iterations...")
-for i in range(iterations):
-    optimizer.zero_grad()
-    output = deepkernelmodel.forward(train_x)
-    loss = -mll(output, train_y)
-    loss.backward()
-    optimizer.step()
+with gpytorch.settings.cholesky_jitter(1e-3):
+    for i in range(iterations):
+        optimizer.zero_grad()
+        output = deepkernelmodel.forward(train_x)
+        loss = -mll(output, train_y)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(deepkernelmodel.parameters(), max_norm=1.0)
+        optimizer.step()
 
-    if (i+1) % 50 == 0:
-        logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
+        if (i+1) % 50 == 0:
+            logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
 
 # Evaluation
 deepkernelmodel.eval()
