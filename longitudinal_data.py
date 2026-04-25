@@ -297,6 +297,63 @@ print('Studies in additional data:', additional_data['Study'].unique())
 print('Columns in additional data:', additional_data.columns.tolist())
 print('Columns in data', data.columns.tolist())
 
+# ---------------------------------------------------------------------------
+# NaN analysis of additional_data before concatenation
+# ---------------------------------------------------------------------------
+print(f'\n=== additional_data NaN analysis ({additional_data.shape[0]} rows, '
+      f'{additional_data["PTID"].nunique()} subjects) ===')
+
+nan_counts = additional_data.isna().sum()
+nan_cols = nan_counts[nan_counts > 0].sort_values(ascending=False)
+
+if nan_cols.empty:
+    print('  No NaN values found in additional_data — clean.')
+else:
+    total_cells = additional_data.shape[0] * additional_data.shape[1]
+    total_nan   = nan_cols.sum()
+    print(f'  Total NaN cells : {total_nan} / {total_cells} '
+          f'({100 * total_nan / total_cells:.2f}%)')
+    print(f'  Columns with NaN: {len(nan_cols)} / {additional_data.shape[1]}')
+
+    # Separate DLMUSE ROI columns from clinical/metadata columns
+    dlmuse_nan = nan_cols[nan_cols.index.str.startswith('DLMUSE_')]
+    other_nan  = nan_cols[~nan_cols.index.str.startswith('DLMUSE_')]
+
+    if not other_nan.empty:
+        print('\n  Non-DLMUSE columns with NaN:')
+        for col, cnt in other_nan.items():
+            pct = 100 * cnt / additional_data.shape[0]
+            print(f'    {col}: {cnt} ({pct:.1f}%)')
+
+    if not dlmuse_nan.empty:
+        print(f'\n  DLMUSE columns with NaN: {len(dlmuse_nan)} columns')
+        print('  Top-10 worst DLMUSE NaN columns:')
+        for col, cnt in dlmuse_nan.head(10).items():
+            pct = 100 * cnt / additional_data.shape[0]
+            print(f'    {col}: {cnt} ({pct:.1f}%)')
+    else:
+        print('  No NaN values in DLMUSE ROI columns — good.')
+
+# Zero analysis for DLMUSE ROIs in additional_data
+add_dlmuse_cols = [c for c in additional_data.columns
+                   if c.startswith('DLMUSE_') and int(c[7:]) < 300]
+if add_dlmuse_cols:
+    zero_counts = (additional_data[add_dlmuse_cols] == 0).sum()
+    zero_cols   = zero_counts[zero_counts > 0].sort_values(ascending=False)
+    print(f'\n  DLMUSE zero analysis ({len(add_dlmuse_cols)} ROIs):')
+    if zero_cols.empty:
+        print('  No zero values in DLMUSE ROI columns.')
+    else:
+        print(f'  Rows with any zero DLMUSE value: '
+              f'{(additional_data[add_dlmuse_cols] == 0).any(axis=1).sum()} '
+              f'/ {additional_data.shape[0]}')
+        print('  Top-10 worst DLMUSE zero columns:')
+        for col, cnt in zero_cols.head(10).items():
+            pct = 100 * cnt / additional_data.shape[0]
+            print(f'    {col}: {cnt} ({pct:.1f}%)')
+
+print('=== End additional_data analysis ===\n')
+
 print(data['delta_days_imaging_baseline'].describe())
 data = data.rename(columns={'delta_days_imaging_baseline': 'Delta_Baseline'})
 
