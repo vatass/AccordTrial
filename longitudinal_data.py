@@ -354,6 +354,23 @@ if add_dlmuse_cols:
 
 print('=== End additional_data analysis ===\n')
 
+# ---------------------------------------------------------------------------
+# DLMUSE quality filter on additional_data (before concat)
+# Each dataframe is filtered using only its OWN columns so that column
+# differences between istaging_3_0.csv and additional_data.csv do not
+# cause cross-contamination NaN after concat.
+# ---------------------------------------------------------------------------
+add_dlmuse_filter_cols = [c for c in additional_data.columns
+                          if c.startswith('DLMUSE_') and int(c[7:]) < 300]
+if add_dlmuse_filter_cols:
+    add_nan_mask  = additional_data[add_dlmuse_filter_cols].isna().any(axis=1)
+    add_zero_mask = (additional_data[add_dlmuse_filter_cols] == 0).any(axis=1)
+    add_bad_mask  = add_nan_mask | add_zero_mask
+    n_before = additional_data.shape[0]
+    additional_data = additional_data[~add_bad_mask].reset_index(drop=True)
+    print(f'additional_data DLMUSE filter: dropped {n_before - additional_data.shape[0]} rows '
+          f'({additional_data["PTID"].nunique()} subjects remain)')
+
 print(data['delta_days_imaging_baseline'].describe())
 data = data.rename(columns={'delta_days_imaging_baseline': 'Delta_Baseline'})
 
@@ -386,12 +403,34 @@ data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()} '
       f'(was {before_dedup}, lost {before_dedup - data["PTID"].nunique()})')
 
-# Concatenate additional_data (undatable studies)
-print(f'additional_data: {additional_data.shape[0]} rows, {additional_data["PTID"].nunique()} subjects')
+# ---------------------------------------------------------------------------
+# DLMUSE quality filter on main data (before concat)
+# ---------------------------------------------------------------------------
+data_dlmuse_cols = [c for c in data.columns if c.startswith('DLMUSE_') and int(c[7:]) < 300]
+before_rows = data.shape[0]
+before_subj = data['PTID'].nunique()
+
+nan_muse_mask  = data[data_dlmuse_cols].isna().any(axis=1)
+zero_muse_mask = (data[data_dlmuse_cols] == 0).any(axis=1)
+bad_muse_mask  = nan_muse_mask | zero_muse_mask
+
+print(f'\n=== DLMUSE quality filter — main data ({len(data_dlmuse_cols)} ROIs) ===')
+print(f'  Rows with NaN  in any ROI: {nan_muse_mask.sum()}')
+print(f'  Rows with zero in any ROI: {zero_muse_mask.sum()}')
+for _study in sorted(data['Study'].unique()):
+    _smask = data['Study'] == _study
+    _dropped = (bad_muse_mask & _smask).sum()
+    if _dropped > 0:
+        print(f'    {_study}: {_dropped}/{_smask.sum()} rows dropped')
+data = data[~bad_muse_mask].reset_index(drop=True)
+print(f'  Dropped {before_rows - data.shape[0]} rows total '
+      f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
+print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
+
+# Concatenate additional_data (undatable studies, already filtered above)
+print(f'\nadditional_data: {additional_data.shape[0]} rows, {additional_data["PTID"].nunique()} subjects')
 data = pd.concat([data, additional_data], ignore_index=True)
 print(f'After concat: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
-
-sys.exit(0)
 
 # Validation
 n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
@@ -407,35 +446,6 @@ for _study in sorted(data['Study'].unique()):
     _n_subj = data[data['Study'] == _study]['PTID'].nunique()
     _n_rows = (data['Study'] == _study).sum()
     print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
-
-# ---------------------------------------------------------------------------
-# Drop rows with zero or NaN in any of the 145 DLMUSE ROI features
-# Zero volume = segmentation failure; NaN = missing segmentation entirely
-# ---------------------------------------------------------------------------
-dlmuse_cols = [c for c in data.columns if c.startswith('DLMUSE_') and int(c[7:]) < 300]
-before_rows = data.shape[0]
-before_subj = data['PTID'].nunique()
-
-nan_muse_mask  = data[dlmuse_cols].isna().any(axis=1)
-zero_muse_mask = (data[dlmuse_cols] == 0).any(axis=1)
-bad_muse_mask  = nan_muse_mask | zero_muse_mask
-
-print(f'\n=== DLMUSE quality filter ({len(dlmuse_cols)} ROIs) ===')
-print(f'  Rows with NaN  in any ROI: {nan_muse_mask.sum()}')
-print(f'  Rows with zero in any ROI: {zero_muse_mask.sum()}')
-# Per-study breakdown of dropped rows
-print('  Dropped rows per study:')
-for _study in sorted(data['Study'].unique()):
-    _smask = data['Study'] == _study
-    _dropped = (bad_muse_mask & _smask).sum()
-    _total   = _smask.sum()
-    if _dropped > 0:
-        print(f'    {_study}: {_dropped}/{_total} rows dropped')
-data = data[~bad_muse_mask].reset_index(drop=True)
-
-print(f'  Dropped {before_rows - data.shape[0]} rows total '
-      f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
-print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
 data_unnorm = data.copy()
 
