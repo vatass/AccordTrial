@@ -213,7 +213,7 @@ iterations = 1000
 logger.info(f"Training for {iterations} iterations...")
 for i in range(iterations):
     optimizer.zero_grad()
-    output = deepkernelmodel(train_x)
+    output = deepkernelmodel.forward(train_x)
     loss = -mll(output, train_y)
     loss.backward()
     optimizer.step()
