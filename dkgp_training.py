@@ -204,6 +204,10 @@ optimizer = torch.optim.Adam([
 
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 
+# Explicitly sync train_inputs/train_targets after .cuda() and .train() calls,
+# so ExactGP's equality check always sees the correct tensors in the loop.
+deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
+
 # Training loop
 iterations = 1000
 logger.info(f"Training for {iterations} iterations...")
