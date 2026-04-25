@@ -271,22 +271,25 @@ for _study in sorted(data['Study'].unique()):
     print(f'  {_study}: {_parsed}/{_total} dates parsed')
 print()
 
-print('\n=== MRID samples for studies with unparsed dates ===')
-studies_with_unparsed_dates = []
-for _study in sorted(data['Study'].unique()):
-    _mask = data['Study'] == _study
-    _parsed = data.loc[_mask, 'Date'].notna().sum()
-    _total = _mask.sum()
-    if _parsed < _total:
-        _unparsed_mrids = data.loc[_mask & data['Date'].isna(), 'MRID'].dropna().head(5).tolist()
-        print(f'  {_study} ({_total - _parsed} unparsed): {_unparsed_mrids}')
-        studies_with_unparsed_dates.append(_study)
-print()
+# Step 1: Remove studies where dates are ENTIRELY unavailable (no MRID contains a date).
+# These are handled separately via additional_data.csv.
+study_any_date = data.groupby('Study')['Date'].apply(lambda x: x.notna().any())
+undatable_studies = study_any_date[~study_any_date].index.tolist()
+if undatable_studies:
+    print(f'Removing {len(undatable_studies)} entirely undatable studies: {undatable_studies}')
+    data = data[~data['Study'].isin(undatable_studies)]
+else:
+    print('All studies in data have at least one parseable date.')
+print(f'Subjects after undatable-study removal: {data["PTID"].nunique()}')
 
-
-print('Studies that I cannot parse the date', studies_with_unparsed_dates)
-data = data[~data['Study'].isin(studies_with_unparsed_dates)]
-print('Remaining studies', data['Study'].unique())
+# Step 2: Within datable studies, drop individual rows whose MRID date could not be parsed.
+before_rows = data.shape[0]
+before_subj = data['PTID'].nunique()
+data = data[data['Date'].notna()].copy()
+print(f'Dropped {before_rows - data.shape[0]} rows with unparseable dates within datable studies '
+      f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
+print(f'Subjects after per-row date filter: {data["PTID"].nunique()}')
+print('Remaining studies:', sorted(data['Study'].unique()))
 
 additional_data = pd.read_csv('additional_data.csv')
 
@@ -321,11 +324,15 @@ data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
 data['Delta_Baseline'] = data['Delta_Baseline'] / 30
 
 # Remove duplicate Time entries per subject
+before_dedup = data['PTID'].nunique()
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
-print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
+print(f'Subjects after time deduplication: {data["PTID"].nunique()} '
+      f'(was {before_dedup}, lost {before_dedup - data["PTID"].nunique()})')
 
-# Concatenate
+# Concatenate additional_data (undatable studies)
+print(f'additional_data: {additional_data.shape[0]} rows, {additional_data["PTID"].nunique()} subjects')
 data = pd.concat([data, additional_data], ignore_index=True)
+print(f'After concat: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
 # Validation
 n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
@@ -357,10 +364,18 @@ bad_muse_mask  = nan_muse_mask | zero_muse_mask
 print(f'\n=== DLMUSE quality filter ({len(dlmuse_cols)} ROIs) ===')
 print(f'  Rows with NaN  in any ROI: {nan_muse_mask.sum()}')
 print(f'  Rows with zero in any ROI: {zero_muse_mask.sum()}')
+# Per-study breakdown of dropped rows
+print('  Dropped rows per study:')
+for _study in sorted(data['Study'].unique()):
+    _smask = data['Study'] == _study
+    _dropped = (bad_muse_mask & _smask).sum()
+    _total   = _smask.sum()
+    if _dropped > 0:
+        print(f'    {_study}: {_dropped}/{_total} rows dropped')
 data = data[~bad_muse_mask].reset_index(drop=True)
 
-print(f'  Dropped {before_rows - data.shape[0]} rows '
-      f'({before_subj - data["PTID"].nunique()} subjects lost)')
+print(f'  Dropped {before_rows - data.shape[0]} rows total '
+      f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
 data_unnorm = data.copy()
