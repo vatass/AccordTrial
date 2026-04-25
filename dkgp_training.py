@@ -178,6 +178,28 @@ if nan_mask.any():
 else:
     logger.info("No NaN values detected in training data.")
 
+# --- Zero investigation ---
+zero_mask_x = (train_x == 0)
+n_zero_cells = zero_mask_x.sum().item()
+n_total_cells = train_x.numel()
+zero_cols = zero_mask_x.all(dim=0).sum().item()          # columns that are ALL zero
+rows_any_zero = zero_mask_x.any(dim=1).sum().item()       # rows with at least one zero
+logger.info(f"Zero investigation — train_x shape: {list(train_x.shape)}")
+logger.info(f"  Total zero cells   : {n_zero_cells} / {n_total_cells} "
+            f"({100*n_zero_cells/n_total_cells:.2f}%)")
+logger.info(f"  Rows with any zero : {rows_any_zero} / {train_x.shape[0]}")
+logger.info(f"  All-zero columns   : {zero_cols} / {train_x.shape[1]}")
+# Per-feature zero fraction (top offenders)
+zero_frac_per_col = zero_mask_x.float().mean(dim=0)
+top_zero_idx = zero_frac_per_col.argsort(descending=True)[:10]
+logger.info("  Top-10 features by zero fraction:")
+for rank, idx in enumerate(top_zero_idx.tolist()):
+    logger.info(f"    [{rank+1}] feature {idx:3d}  zero_frac={zero_frac_per_col[idx].item():.3f}")
+# Target zeros
+n_zero_y = (train_y == 0).sum().item()
+logger.info(f"  Zero targets (train_y): {n_zero_y} / {train_y.shape[0]}")
+# --- End zero investigation ---
+
 
 # Define model with fixed architecture
 depth = [(train_x.shape[1], int(train_x.shape[1]/2))]
