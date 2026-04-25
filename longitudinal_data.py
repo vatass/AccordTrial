@@ -44,8 +44,8 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
     # print('Clinical Features', clinical_features)
 
     # target = [t for t in target if t.startswith('H_')]
-    print('Target', len(target))
-    print('Input Features', features)
+    # print('Target', len(target))
+    # print('Input Features', features)
 
     for i, subject_id in enumerate(subjects):
 
@@ -57,7 +57,7 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
         for k in range(0, subject.shape[0]):
             samples['PTID'].append(subject_id)
 
-            print('Baseline Features',  features)
+            # print('Baseline Features',  features)
 
             x = subject[features].iloc[0].to_list()
 
@@ -83,7 +83,7 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
             # print('Target', target)
             t = subject[target].iloc[k] #.to_list()
 
-            print('Target', t)
+            # print('Target', t)
       
             longitudinal_covariates['PTID'].append(subject_id)
             longitudinal_covariates['Time'].append(delta)
@@ -333,6 +333,8 @@ print(f'Subjects after time deduplication: {data["PTID"].nunique()} '
 print(f'additional_data: {additional_data.shape[0]} rows, {additional_data["PTID"].nunique()} subjects')
 data = pd.concat([data, additional_data], ignore_index=True)
 print(f'After concat: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
+
+sys.exit(0)
 
 # Validation
 n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
