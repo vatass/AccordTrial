@@ -351,6 +351,27 @@ for _study in sorted(data['Study'].unique()):
     _n_rows = (data['Study'] == _study).sum()
     print(f'  {_study}: {_n_subj} subjects, {_n_rows} rows')
 
+# ---------------------------------------------------------------------------
+# Drop rows with zero or NaN in any of the 145 DLMUSE ROI features
+# Zero volume = segmentation failure; NaN = missing segmentation entirely
+# ---------------------------------------------------------------------------
+dlmuse_cols = [c for c in data.columns if c.startswith('DLMUSE_') and int(c[7:]) < 300]
+before_rows = data.shape[0]
+before_subj = data['PTID'].nunique()
+
+nan_muse_mask  = data[dlmuse_cols].isna().any(axis=1)
+zero_muse_mask = (data[dlmuse_cols] == 0).any(axis=1)
+bad_muse_mask  = nan_muse_mask | zero_muse_mask
+
+print(f'\n=== DLMUSE quality filter ({len(dlmuse_cols)} ROIs) ===')
+print(f'  Rows with NaN  in any ROI: {nan_muse_mask.sum()}')
+print(f'  Rows with zero in any ROI: {zero_muse_mask.sum()}')
+data = data[~bad_muse_mask].reset_index(drop=True)
+
+print(f'  Dropped {before_rows - data.shape[0]} rows '
+      f'({before_subj - data["PTID"].nunique()} subjects lost)')
+print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
+
 data_unnorm = data.copy()
 
 print('Studies', data['Study'].unique())
