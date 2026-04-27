@@ -182,9 +182,6 @@ for u in unique_diagnosis:
 
 data['DX_AD'].replace(old_diagnosis, new_diagnosis, inplace=True)
 
-
-
-
 # Remove non-AD-spectrum diagnoses
 data = data[~data['DX_AD'].isin(
     ['Vascular Dementia', 'other', 'FTD', '', 'PD', 'Lewy Body Dementia', 'Hydrocephalus', 'PCA', 'TBI']
@@ -549,7 +546,6 @@ print(f'Normalization stats computed and saved to: {norm_pkl}')
 data['Age']      = (data['Age']      - mean_age)     / std_age
 data['SPARE_BA'] = (data['SPARE_BA'] - mean_spareba) / std_spareba
 data['BAG']      = (data['BAG']      - mean_bag)     / std_bag
-
 data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
 
 print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
@@ -563,14 +559,13 @@ for cf in clinical_features:
 # ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
-
 data = data[data['Study']!='ACCORD']
 all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
-
 accord_subjects = list(accord_data['PTID'].unique())
-
+print(accord_data['BAG'].describe())
+sys.exit(0)
 print('Studies apart accord', data['Study'].unique())
 print('ACCORD Subjects', accord_data['PTID'].nunique())
 
@@ -592,12 +587,11 @@ longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
 longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 
+features = [name for name in data.columns if name.startswith('DLMUSE_') and int(name[7:]) < 300]
+features.extend(clinical_features)
 
 accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
 accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
-
-
-
 
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
