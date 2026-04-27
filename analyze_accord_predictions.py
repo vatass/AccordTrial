@@ -135,8 +135,10 @@ ensemble['Sex_label'] = ensemble['Sex'].map({0: 'Male', 1: 'Female'})
 # 4. Summary statistics
 # ---------------------------------------------------------------------------
 timepoints = sorted(ensemble['time_months'].unique())
+tps_yr     = [t / 12 for t in timepoints]          # year-scale positions for x-axes
 obs_mask   = ensemble['ground_truth'].notna()
 obs_tps    = sorted(ensemble.loc[obs_mask, 'time_months'].unique())
+obs_tps_yr = [t / 12 for t in obs_tps]
 
 print(f'\nTimepoints in data        : {timepoints}')
 print(f'Timepoints with real BAG  : {obs_tps}')
@@ -179,7 +181,7 @@ plt.rcParams.update({
     'lines.linewidth':    1.5,
     'savefig.dpi':        300,
     'savefig.bbox':       'tight',
-    'savefig.pad_inches': 0.05,
+    'savefig.pad_inches': 0.15,
 })
 
 # Colorblind-friendly palette
@@ -195,16 +197,14 @@ def _despine(ax):
     ax.spines['right'].set_visible(False)
 
 def _xtick_labels(tps):
-    """Year labels with months in parentheses."""
-    labels = []
-    for t in tps:
-        if t == 0:
-            labels.append('Baseline\n(0 m)')
-        elif t % 12 == 0:
-            labels.append(f'Year {t//12}\n({t} m)')
-        else:
-            labels.append(f'{t} m')
-    return labels
+    """Simple year labels: 'BL', '1', '2', … for publication axes."""
+    return ['BL' if t == 0 else str(t // 12) for t in tps]
+
+def _set_time_axis(ax, tps):
+    """Apply clean year tick labels and x-axis title."""
+    ax.set_xticks(tps)
+    ax.set_xticklabels(_xtick_labels(tps))
+    ax.set_xlabel('Time (years from baseline)')
 
 rng = np.random.default_rng(42)
 
@@ -216,7 +216,7 @@ fig, ax = plt.subplots(figsize=(10, 5.5))
 # Ultra-transparent spaghetti — shows density without visual clutter
 for ptid, subj in ensemble.groupby('PTID'):
     subj = subj.sort_values('time_months')
-    ax.plot(subj['time_months'], subj['predicted'],
+    ax.plot(subj['time_months'] / 12, subj['predicted'],
             color=C_PRED, lw=0.3, alpha=0.06, zorder=1)
 
 # Population mean ± SEM band
@@ -226,9 +226,9 @@ pop['se']    = pop['std'] / np.sqrt(pop['count'])
 pop['ci_lo'] = pop['mean'] - 1.96 * pop['se']
 pop['ci_hi'] = pop['mean'] + 1.96 * pop['se']
 
-ax.fill_between(pop['time_months'], pop['ci_lo'], pop['ci_hi'],
+ax.fill_between(pop['time_months'] / 12, pop['ci_lo'], pop['ci_hi'],
                 alpha=0.35, color=C_POP, zorder=2)
-ax.plot(pop['time_months'], pop['mean'], '-', color=C_PRED, lw=2.5,
+ax.plot(pop['time_months'] / 12, pop['mean'], '-', color=C_PRED, lw=2.5,
         label='Population mean (± 95% SEM)', zorder=3)
 
 # Observed BAG at measured timepoints
@@ -236,15 +236,15 @@ if obs_mask.any():
     obs_agg = (ensemble[obs_mask].groupby('time_months')['ground_truth']
                .agg(['mean', 'std', 'count']).reset_index())
     obs_agg['se'] = obs_agg['std'] / np.sqrt(obs_agg['count'])
-    ax.errorbar(obs_agg['time_months'], obs_agg['mean'],
+    ax.errorbar(obs_agg['time_months'] / 12, obs_agg['mean'],
                 yerr=1.96 * obs_agg['se'], fmt='D', color=C_OBS,
                 ms=7, lw=1.5, capsize=4, capthick=1.5,
                 label='Observed BAG (mean ± 95% SEM)', zorder=5)
 
-ax.set_xlabel('Time')
+ax.set_xlabel('Time (years from baseline)')
 ax.set_ylabel('BAG (years)')
 ax.set_title('ACCORD: Individual and Population BAG Trajectories')
-ax.set_xticks(timepoints)
+ax.set_xticks(tps_yr)
 ax.set_xticklabels(_xtick_labels(timepoints))
 ax.yaxis.grid(True, zorder=0)
 ax.set_axisbelow(True)
@@ -276,13 +276,13 @@ for ax, sex_label in zip(axes, ['Male', 'Female']):
 
     # Mean GP prediction interval band (averaged over subjects)
     mean_bounds = sub.groupby('time_months')[['lower_bound', 'upper_bound']].mean().reset_index()
-    ax.fill_between(mean_bounds['time_months'],
+    ax.fill_between(mean_bounds['time_months'] / 12,
                     mean_bounds['lower_bound'], mean_bounds['upper_bound'],
                     alpha=0.18, color=col, label='Mean GP interval', zorder=1)
     # Population SEM band
-    ax.fill_between(pop_s['time_months'], pop_s['ci_lo'], pop_s['ci_hi'],
+    ax.fill_between(pop_s['time_months'] / 12, pop_s['ci_lo'], pop_s['ci_hi'],
                     alpha=0.35, color=col, label='95% SEM band', zorder=2)
-    ax.plot(pop_s['time_months'], pop_s['mean'], '-', color=col, lw=2.5,
+    ax.plot(pop_s['time_months'] / 12, pop_s['mean'], '-', color=col, lw=2.5,
             label='Mean prediction', zorder=3)
 
     # Observed
@@ -291,13 +291,13 @@ for ax, sex_label in zip(axes, ['Male', 'Female']):
         obs_s = (real_s.groupby('time_months')['ground_truth']
                  .agg(['mean', 'std', 'count']).reset_index())
         obs_s['se'] = obs_s['std'] / np.sqrt(obs_s['count'])
-        ax.errorbar(obs_s['time_months'], obs_s['mean'],
+        ax.errorbar(obs_s['time_months'] / 12, obs_s['mean'],
                     yerr=1.96 * obs_s['se'], fmt='D', color=C_OBS,
                     ms=7, lw=1.5, capsize=4, capthick=1.5, label='Observed BAG', zorder=5)
 
     ax.set_title(f'{sex_label}  (n = {sub["PTID"].nunique()})')
-    ax.set_xlabel('Time')
-    ax.set_xticks(timepoints)
+    ax.set_xlabel('Time (years from baseline)')
+    ax.set_xticks(tps_yr)
     ax.set_xticklabels(_xtick_labels(timepoints))
     ax.yaxis.grid(True, zorder=0)
     ax.set_axisbelow(True)
@@ -324,11 +324,14 @@ if n_want > n_with:
     chosen += list(rng.choice(remaining, size=n_want - n_with, replace=False))
 rng.shuffle(chosen)
 
+tps_yr_sparse = tps_yr[::2]          # every other timepoint for small panels
+tps_mo_sparse = timepoints[::2]
+
 ncols = 4
 nrows = int(np.ceil(len(chosen) / ncols))
 fig, axes = plt.subplots(nrows, ncols,
                          figsize=(4.2 * ncols, 3.2 * nrows),
-                         sharey=True, sharex=False)
+                         sharey=True, sharex=True)
 axes_flat = np.array(axes).flatten()
 
 legend_drawn = False
@@ -337,21 +340,20 @@ for ax, ptid in zip(axes_flat, chosen):
     sex_lbl = subj['Sex_label'].iloc[0] if not subj['Sex_label'].isna().all() else '?'
     age_val = subj['Age'].iloc[0]
 
-    ax.fill_between(subj['time_months'], subj['lower_bound'], subj['upper_bound'],
+    ax.fill_between(subj['time_months'] / 12, subj['lower_bound'], subj['upper_bound'],
                     alpha=0.28, color=C_CI, zorder=1, label='90% PI')
-    ax.plot(subj['time_months'], subj['predicted'], '-', color=C_PRED, lw=1.8,
+    ax.plot(subj['time_months'] / 12, subj['predicted'], '-', color=C_PRED, lw=1.8,
             zorder=2, label='Predicted')
 
     real = subj[subj['ground_truth'].notna()]
     if len(real) > 0:
-        ax.scatter(real['time_months'], real['ground_truth'],
+        ax.scatter(real['time_months'] / 12, real['ground_truth'],
                    color=C_OBS, s=50, zorder=5, marker='D', label='Observed')
 
     age_str = f'{age_val:.0f} yr' if pd.notna(age_val) else ''
     ax.set_title(f'{sex_lbl}  {age_str}', fontsize=8)
-    ax.set_xticks(timepoints[::2])
-    ax.set_xticklabels([_xtick_labels(timepoints[::2])[i]
-                        for i in range(len(timepoints[::2]))], fontsize=6.5)
+    ax.set_xticks(tps_yr_sparse)
+    ax.set_xticklabels(_xtick_labels(tps_mo_sparse), fontsize=6.5)
     ax.tick_params(labelsize=7)
     ax.yaxis.grid(True, zorder=0)
     ax.set_axisbelow(True)
@@ -367,8 +369,7 @@ for ax in axes_flat[len(chosen):]:
 # Single shared legend below the grid
 fig.legend(handles, labels, loc='lower center', ncol=3,
            bbox_to_anchor=(0.5, -0.03), fontsize=9, framealpha=0.9)
-# Shared axis labels
-fig.supxlabel('Time', y=-0.04)
+fig.supxlabel('Time (years from baseline)', y=-0.04)
 fig.supylabel('BAG (years)', x=-0.01)
 fig.suptitle('ACCORD Individual BAG Trajectories (sample)', y=1.01)
 fig.tight_layout()
@@ -386,7 +387,7 @@ if obs_mask.any() and len(obs_tps) > 0:
     fig, axes = plt.subplots(1, ncols_s,
                              figsize=(panel_w * ncols_s, panel_w + 0.5),
                              squeeze=False)
-    for ax, tp in zip(axes[0], obs_tps):
+    for ax, (tp, tp_yr) in zip(axes[0], zip(obs_tps, obs_tps_yr)):
         tp_data = matched[matched['time_months'] == tp].dropna(
             subset=['ground_truth', 'predicted'])
         if len(tp_data) < 2:
@@ -406,14 +407,13 @@ if obs_mask.any() and len(obs_tps) > 0:
         ax.set_ylim(lo, hi)
         ax.set_aspect('equal', adjustable='box')
 
-        label = f'$r$ = {r:.3f}\nMAE = {mae_tp:.2f} yr\n$n$ = {len(tp_data)}'
-        ax.text(0.05, 0.95, label, transform=ax.transAxes,
+        note = f'$r$ = {r:.3f}\nMAE = {mae_tp:.2f} yr\n$n$ = {len(tp_data)}'
+        ax.text(0.05, 0.95, note, transform=ax.transAxes,
                 va='top', ha='left', fontsize=8.5,
                 bbox=dict(boxstyle='round,pad=0.35', facecolor='white',
                           edgecolor='0.8', linewidth=0.7))
 
-        tp_yr = tp / 12
-        ax.set_title(f'{"Baseline" if tp == 0 else f"Year {tp_yr:.1g}"}  (t = {tp} m)')
+        ax.set_title(f'{"Baseline" if tp == 0 else f"Year {tp_yr:.4g}"}')
         ax.set_xlabel('Observed BAG (yr)')
         if tp == obs_tps[0]:
             ax.set_ylabel('Predicted BAG (yr)')
@@ -433,14 +433,15 @@ else:
 # ---------------------------------------------------------------------------
 # Fig 5: Violin of predicted BAG distribution at each timepoint
 # ---------------------------------------------------------------------------
+from matplotlib.patches import Patch
+
 fig, ax = plt.subplots(figsize=(11, 5.5))
 
 viol_data = [ensemble[ensemble['time_months'] == tp]['predicted'].values
              for tp in timepoints]
-positions = list(range(len(timepoints)))
 
-vp = ax.violinplot(viol_data, positions=positions,
-                   showmedians=True, showextrema=False, widths=0.65)
+vp = ax.violinplot(viol_data, positions=tps_yr,
+                   showmedians=True, showextrema=False, widths=0.55)
 for body in vp['bodies']:
     body.set_facecolor(C_PRED)
     body.set_edgecolor(C_PRED)
@@ -450,28 +451,25 @@ vp['cmedians'].set_linewidth(2.2)
 
 # Overlay jittered observed points
 obs_handle = None
-for j, tp in enumerate(timepoints):
+for tp, tp_yr in zip(timepoints, tps_yr):
     real = ensemble.loc[(ensemble['time_months'] == tp) & obs_mask, 'ground_truth']
     if len(real) > 0:
-        jitter = rng.uniform(-0.18, 0.18, size=len(real))
-        sc = ax.scatter(j + jitter, real, color=C_OBS, s=14,
+        jitter = rng.uniform(-0.12, 0.12, size=len(real))
+        sc = ax.scatter(tp_yr + jitter, real, color=C_OBS, s=14,
                         alpha=0.70, zorder=5, linewidths=0)
         if obs_handle is None:
             obs_handle = sc
 
-from matplotlib.patches import Patch
-legend_handles = [
-    Patch(facecolor=C_PRED, alpha=0.65, label='Predicted BAG'),
-]
+legend_handles = [Patch(facecolor=C_PRED, alpha=0.65, label='Predicted BAG')]
 if obs_handle is not None:
     legend_handles.append(
         plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=C_OBS,
                    markersize=6, label='Observed BAG'))
 ax.legend(handles=legend_handles, loc='upper left')
 
-ax.set_xticks(positions)
+ax.set_xticks(tps_yr)
 ax.set_xticklabels(_xtick_labels(timepoints))
-ax.set_xlabel('Time')
+ax.set_xlabel('Time (years from baseline)')
 ax.set_ylabel('BAG (years)')
 ax.set_title('ACCORD Predicted BAG Distribution Over Time')
 ax.yaxis.grid(True, zorder=0)
