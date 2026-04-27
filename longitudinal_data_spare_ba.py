@@ -306,6 +306,8 @@ if not additional_data.empty:
 else:
     print('No undatable studies found in data; additional_data.csv not created.')
 
+
+print('Additional Data Studies', additional_data['Study'].unique())
 sys.exit(0)
 
 

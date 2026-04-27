@@ -323,7 +323,6 @@ print(f'Subjects after per-row date filter: {data["PTID"].nunique()}')
 print('Remaining studies:', sorted(data['Study'].unique()))
 _accord_n(data, '6. after date filter (NaT rows dropped)')
 
-
 additional_data = pd.read_csv('additional_data.csv')
 
 additional_data = additional_data.rename(columns={
@@ -625,6 +624,32 @@ for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
 # ---------------------------------------------------------------------------
+# Normalize ACCORD data using the training stats computed above
+# Apply the same pipeline: Baseline_Age, non-negative Time, BAG, MUSE z-score,
+# clinical z-score, Sex encoding, fillna — identical to what was done on data.
+# ---------------------------------------------------------------------------
+accord_data = accord_data_unnorm.copy()
+
+accord_data['Baseline_Age'] = accord_data.groupby('PTID')['Age'].transform('min')
+accord_data = accord_data[accord_data['Time'] >= 0].copy()
+
+accord_data['BAG'] = accord_data['SPARE_BA'] - accord_data['Age']
+
+accord_df_hmuse = accord_data.filter(regex=r'^DLMUSE_')
+for i, c in enumerate(accord_df_hmuse.columns):
+    accord_data[c] = (accord_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
+
+accord_data['Age']      = (accord_data['Age']      - mean_age)     / std_age
+accord_data['SPARE_BA'] = (accord_data['SPARE_BA'] - mean_spareba) / std_spareba
+accord_data['BAG']      = (accord_data['BAG']      - mean_bag)     / std_bag
+accord_data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
+
+for cf in clinical_features:
+    accord_data[cf] = accord_data[cf].fillna(-1)
+
+print(f'ACCORD normalized: {accord_data["PTID"].nunique()} subjects, {len(accord_data)} rows')
+
+# ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
 all_subjects = list(data['PTID'].unique())
@@ -652,13 +677,55 @@ samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 features = [name for name in data.columns if name.startswith('DLMUSE_') and int(name[7:]) < 300]
 features.extend(clinical_features)
 
-
 accord_subjects = list(accord_data['PTID'].unique())
 print('ACCORD Subjects', len(accord_subjects))
-accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
-accord_samples_df = pd.DataFrame(data=samples)
-accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
 
+print('ACCORD data', len(accord_data['PTID'].unique()))
+print('ACCORD data unnorm', len(accord_data_unnorm['PTID'].unique()))
+
+accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+accord_samples_df = pd.DataFrame(data=accord_samples)
+accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
+print('ACCORD Subjects', accord_samples_df['PTID'].nunique())
+
+# ---------------------------------------------------------------------------
+# Quality assurance — accord_samples_df must be NaN-free
+# ---------------------------------------------------------------------------
+qa_failed = False
+
+nan_counts = accord_samples_df.isna().sum()
+if nan_counts.any():
+    print('QA FAIL — NaN values in accord_samples_df columns:')
+    for col, n in nan_counts[nan_counts > 0].items():
+        print(f'  {col}: {n} NaNs')
+    qa_failed = True
+else:
+    print('QA pass — no NaN in accord_samples_df columns (PTID/X/Y)')
+
+x_nan_mask = accord_samples_df['X'].str.contains(r'\bnan\b', case=False, regex=True)
+if x_nan_mask.any():
+    print(f'QA FAIL — {x_nan_mask.sum()} X vectors contain NaN:')
+    for _, row in accord_samples_df[x_nan_mask][['PTID', 'X']].head(5).iterrows():
+        print(f'  PTID={row["PTID"]}  X={row["X"][:120]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside X feature vectors')
+
+y_nan_mask = accord_samples_df['Y'].str.contains(r'\bnan\b', case=False, regex=True)
+if y_nan_mask.any():
+    print(f'QA FAIL — {y_nan_mask.sum()} Y vectors contain NaN:')
+    for _, row in accord_samples_df[y_nan_mask][['PTID', 'Y']].head(5).iterrows():
+        print(f'  PTID={row["PTID"]}  Y={row["Y"]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside Y target vectors')
+
+if qa_failed:
+    raise ValueError('accord_samples_df failed NaN QA — fix upstream NaN sources.')
+print('QA complete — accord_samples_df is clean.')
+# ---------------------------------------------------------------------------
+
+sys.exit(0)
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
 # ---------------------------------------------------------------------------
