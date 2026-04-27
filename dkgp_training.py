@@ -353,6 +353,19 @@ logger.info(f'Loss plot saved to {loss_plot_path}')
 deepkernelmodel.eval()
 likelihood.eval()
 
+# Load BAG normalization stats so all metrics are reported in original years
+_norm_stats_path = os.path.join(os.path.dirname(data_file), 'normalization_stats.pkl') \
+    if os.path.exists(os.path.join(os.path.dirname(data_file), 'normalization_stats.pkl')) \
+    else './data/normalization_stats.pkl'
+with open(_norm_stats_path, 'rb') as _f:
+    _norm_stats = pickle.load(_f)
+bag_mean = _norm_stats['BAG']['mean']
+bag_std  = _norm_stats['BAG']['std']
+logger.info(f'BAG denormalization: mean={bag_mean:.3f} yr, std={bag_std:.3f} yr')
+
+def denorm(x_np):
+    return x_np * bag_std + bag_mean
+
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
     f_preds = deepkernelmodel(test_x)
     mean = f_preds.mean
@@ -360,27 +373,34 @@ with torch.no_grad(), gpytorch.settings.fast_pred_var():
     lower = mean - 1.645 * f_preds.stddev
     upper = mean + 1.645 * f_preds.stddev
 
-# Calculate metrics
-mae_pop = mean_absolute_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
-mse_pop = mean_squared_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
+# Denormalize before computing metrics
+test_y_dn = denorm(test_y.cpu().detach().numpy())
+mean_dn   = denorm(mean.cpu().detach().numpy())
+lower_dn  = denorm(lower.cpu().detach().numpy())
+upper_dn  = denorm(upper.cpu().detach().numpy())
+
+# Calculate metrics (in years)
+mae_pop  = mean_absolute_error(test_y_dn, mean_dn)
+mse_pop  = mean_squared_error(test_y_dn, mean_dn)
 rmse_pop = np.sqrt(mse_pop)
-rsq = r2_score(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
+rsq      = r2_score(test_y_dn, mean_dn)
 
 coverage, interval_width, mean_coverage, mean_interval_width = calc_coverage(
-    predictions=mean.cpu().detach().numpy(),
-    groundtruth=test_y.cpu().detach().numpy(),
-    intervals=[lower.cpu().detach().numpy(), upper.cpu().detach().numpy()]
+    predictions=mean_dn,
+    groundtruth=test_y_dn,
+    intervals=[lower_dn, upper_dn]
+)
+coverage, interval_width, mean_coverage, mean_interval_width = (
+    coverage.numpy().astype(int), interval_width.numpy(),
+    mean_coverage.numpy(), mean_interval_width.numpy()
 )
 
-coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy()
-
-logger.info(f"Results for Biomarker {biomarker_name}:")
-logger.info(f"MAE: {mae_pop:.4f}")
-logger.info(f"MSE: {mse_pop:.4f}")
-logger.info(f"RMSE: {rmse_pop:.4f}")
-logger.info(f"R²: {rsq:.4f}")
-logger.info(f"Coverage: {np.mean(coverage):.4f}")
-logger.info(f"Interval Width: {mean_interval_width:.4f}")
+logger.info(f"Test results for {biomarker_name} (denormalized, in years):")
+logger.info(f"  MAE:            {mae_pop:.4f} yr")
+logger.info(f"  RMSE:           {rmse_pop:.4f} yr")
+logger.info(f"  R²:             {rsq:.4f}")
+logger.info(f"  Coverage (90%): {np.mean(coverage):.4f}")
+logger.info(f"  Interval width: {mean_interval_width:.4f} yr")
 
 # ------------------------------------------------------------------
 # ACCORD Inference
@@ -392,16 +412,22 @@ with torch.no_grad(), gpytorch.settings.fast_pred_var():
     accord_lower = accord_mean - 1.645 * accord_f_preds.stddev
     accord_upper = accord_mean + 1.645 * accord_f_preds.stddev
 
-# Calculate ACCORD metrics
-accord_mae = mean_absolute_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
-accord_mse = mean_squared_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+# Denormalize ACCORD predictions
+accord_test_y_dn = denorm(accord_test_y.cpu().detach().numpy())
+accord_mean_dn   = denorm(accord_mean.cpu().detach().numpy())
+accord_lower_dn  = denorm(accord_lower.cpu().detach().numpy())
+accord_upper_dn  = denorm(accord_upper.cpu().detach().numpy())
+
+# Calculate ACCORD metrics (in years)
+accord_mae  = mean_absolute_error(accord_test_y_dn, accord_mean_dn)
+accord_mse  = mean_squared_error(accord_test_y_dn, accord_mean_dn)
 accord_rmse = np.sqrt(accord_mse)
-accord_rsq = r2_score(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+accord_rsq  = r2_score(accord_test_y_dn, accord_mean_dn)
 
 accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = calc_coverage(
-    predictions=accord_mean.cpu().detach().numpy(),
-    groundtruth=accord_test_y.cpu().detach().numpy(),
-    intervals=[accord_lower.cpu().detach().numpy(), accord_upper.cpu().detach().numpy()]
+    predictions=accord_mean_dn,
+    groundtruth=accord_test_y_dn,
+    intervals=[accord_lower_dn, accord_upper_dn]
 )
 accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = (
     accord_coverage.numpy().astype(int),
@@ -410,31 +436,26 @@ accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interv
     accord_mean_interval_width.numpy()
 )
 
-logger.info(f"ACCORD Results for Biomarker {biomarker_name}:")
-logger.info(f"MAE: {accord_mae:.4f}")
-logger.info(f"MSE: {accord_mse:.4f}")
-logger.info(f"RMSE: {accord_rmse:.4f}")
-logger.info(f"R²: {accord_rsq:.4f}")
-logger.info(f"Coverage: {np.mean(accord_coverage):.4f}")
-logger.info(f"Interval Width: {accord_mean_interval_width:.4f}")
+logger.info(f"ACCORD results for {biomarker_name} (denormalized, in years):")
+logger.info(f"  MAE:            {accord_mae:.4f} yr")
+logger.info(f"  RMSE:           {accord_rmse:.4f} yr")
+logger.info(f"  R²:             {accord_rsq:.4f}")
+logger.info(f"  Coverage (90%): {np.mean(accord_coverage):.4f}")
+logger.info(f"  Interval width: {accord_mean_interval_width:.4f} yr")
 
-# ACCORD per-sample predictions DataFrame
-accord_test_y_np   = accord_test_y.cpu().detach().numpy()
-accord_mean_np     = accord_mean.cpu().detach().numpy()
-accord_lower_np    = accord_lower.cpu().detach().numpy()
-accord_upper_np    = accord_upper.cpu().detach().numpy()
-accord_variance_np = accord_variance.cpu().detach().numpy()
-accord_interval_np = accord_upper_np - accord_lower_np
-accord_abs_error   = np.abs(accord_test_y_np - accord_mean_np)
-accord_sq_error    = (accord_test_y_np - accord_mean_np) ** 2
+# ACCORD per-sample predictions DataFrame (denormalized values, in years)
+accord_variance_np = accord_variance.cpu().detach().numpy() * (bag_std ** 2)
+accord_interval_np = accord_upper_dn - accord_lower_dn
+accord_abs_error   = np.abs(accord_test_y_dn - accord_mean_dn)
+accord_sq_error    = (accord_test_y_dn - accord_mean_dn) ** 2
 
 accord_predictions_df = pd.DataFrame({
     'PTID':           accord_ptids_list,
     'time_months':    accord_time_list,
-    'ground_truth':   accord_test_y_np,
-    'predicted':      accord_mean_np,
-    'lower_bound':    accord_lower_np,
-    'upper_bound':    accord_upper_np,
+    'ground_truth':   accord_test_y_dn,
+    'predicted':      accord_mean_dn,
+    'lower_bound':    accord_lower_dn,
+    'upper_bound':    accord_upper_dn,
     'variance':       accord_variance_np,
     'interval_width': accord_interval_np,
     'abs_error':      accord_abs_error,
@@ -472,24 +493,20 @@ logger.info(f"  RMSE — mean: {accord_subject_metrics['rmse'].mean():.4f}")
 logger.info(f"  Coverage — mean: {accord_subject_metrics['coverage_rate'].mean():.4f}")
 
 # ------------------------------------------------------------------
-# Per-sample predictions DataFrame
+# Per-sample predictions DataFrame (denormalized, in years)
 # ------------------------------------------------------------------
-test_y_np      = test_y.cpu().detach().numpy()
-mean_np        = mean.cpu().detach().numpy()
-lower_np       = lower.cpu().detach().numpy()
-upper_np       = upper.cpu().detach().numpy()
-variance_np    = variance.cpu().detach().numpy()
-interval_np    = upper_np - lower_np
-abs_error_np   = np.abs(test_y_np - mean_np)
-sq_error_np    = (test_y_np - mean_np) ** 2
+variance_np  = variance.cpu().detach().numpy() * (bag_std ** 2)
+interval_np  = upper_dn - lower_dn
+abs_error_np = np.abs(test_y_dn - mean_dn)
+sq_error_np  = (test_y_dn - mean_dn) ** 2
 
 predictions_df = pd.DataFrame({
     'PTID':           test_ptids_list,
     'time_months':    test_time_list,
-    'ground_truth':   test_y_np,
-    'predicted':      mean_np,
-    'lower_bound':    lower_np,
-    'upper_bound':    upper_np,
+    'ground_truth':   test_y_dn,
+    'predicted':      mean_dn,
+    'lower_bound':    lower_dn,
+    'upper_bound':    upper_dn,
     'variance':       variance_np,
     'interval_width': interval_np,
     'abs_error':      abs_error_np,
