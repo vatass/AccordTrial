@@ -294,6 +294,26 @@ else:
 print(f'Subjects after undatable-study removal: {data["PTID"].nunique()}')
 
 # Step 2: Within datable studies, drop individual rows whose MRID date could not be parsed.
+# --- ACCORD-specific diagnostic BEFORE dropping ---
+accord_pre = data[data['Study'] == 'ACCORD']
+accord_nat = accord_pre[accord_pre['Date'].isna()]
+accord_parsed = accord_pre[accord_pre['Date'].notna()]
+
+if len(accord_nat) > 0:
+    # Subjects that will lose ALL rows (only NaT dates)
+    accord_all_nat = accord_nat.groupby('PTID').filter(
+        lambda g: g['PTID'].iloc[0] not in accord_parsed['PTID'].values
+    )
+    print(f'\n=== ACCORD date-filter diagnostic ===')
+    print(f'  Total ACCORD rows    : {len(accord_pre)}')
+    print(f'  Rows with parsed date: {len(accord_parsed)}')
+    print(f'  Rows with NaT date   : {len(accord_nat)}')
+    print(f'  Subjects losing ALL rows (all NaT): {accord_all_nat["PTID"].nunique()}')
+    print(f'  Sample unparseable MRIDs:')
+    for mrid in accord_nat['MRID'].dropna().head(10).tolist():
+        print(f'    {mrid!r}')
+    print('=== end ACCORD diagnostic ===\n')
+
 before_rows = data.shape[0]
 before_subj = data['PTID'].nunique()
 data = data[data['Date'].notna()].copy()
@@ -451,6 +471,22 @@ for _study in sorted(data['Study'].unique()):
     _dropped = (bad_muse_mask & _smask).sum()
     if _dropped > 0:
         print(f'    {_study}: {_dropped}/{_smask.sum()} rows dropped')
+
+# --- ACCORD-specific diagnostic for DLMUSE drops ---
+accord_bad = bad_muse_mask & (data['Study'] == 'ACCORD')
+if accord_bad.any():
+    accord_bad_rows = data[accord_bad]
+    print(f'\n  ACCORD DLMUSE drops: {accord_bad.sum()} rows, '
+          f'{accord_bad_rows["PTID"].nunique()} subjects')
+    # Which columns are responsible?
+    acc_nan_cols  = data.loc[accord_bad, data_dlmuse_cols].isna().any()
+    acc_zero_cols = (data.loc[accord_bad, data_dlmuse_cols] == 0).any()
+    bad_cols = sorted(set(
+        acc_nan_cols[acc_nan_cols].index.tolist() +
+        acc_zero_cols[acc_zero_cols].index.tolist()
+    ))
+    print(f'  Offending DLMUSE columns ({len(bad_cols)}): {bad_cols[:20]}')
+
 data = data[~bad_muse_mask].reset_index(drop=True)
 print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
@@ -506,6 +542,18 @@ print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 _accord_n(data, '9. after DLMUSE quality filter (post-concat)')
 
 data_unnorm = data.copy()
+
+# ---------------------------------------------------------------------------
+# Exclude ACCORD from training data BEFORE computing any normalization stats.
+# ACCORD is the prospective held-out cohort; including it in the normalization
+# would constitute data leakage because accord_data.py loads the saved pkl
+# files to normalize ACCORD for inference.
+# ---------------------------------------------------------------------------
+accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD'].copy()
+data               = data[data['Study']        != 'ACCORD'].reset_index(drop=True)
+data_unnorm        = data_unnorm[data_unnorm['Study'] != 'ACCORD'].reset_index(drop=True)
+print(f'\nACCORD held out from normalization: {accord_data_unnorm["PTID"].nunique()} subjects')
+print(f'Training data (ACCORD excluded)  : {data["PTID"].nunique()} subjects')
 
 print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
@@ -567,13 +615,10 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-# Capture ACCORD slice NOW — after BAG is computed and normalized
-accord_data        = data[data['Study'] == 'ACCORD']
-accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
-
-_accord_n(data, '11. FINAL (after normalization)')
-print('ACCORD BAG (normalized):')
-print(accord_data['BAG'].describe())
+# ACCORD is already excluded from data — print raw BAG stats from unnorm slice
+accord_bag_yr = accord_data_unnorm['SPARE_BA'] - accord_data_unnorm['Age']
+print(f'\nACCORD BAG (years, unnormalized, n={len(accord_bag_yr)} rows):')
+print(accord_bag_yr.describe())
 
 clinical_features = ['Sex', 'Age', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
@@ -582,11 +627,9 @@ for cf in clinical_features:
 # ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
-# Exclude ACCORD from the training set (held out as prospective test cohort)
-data = data[data['Study'] != 'ACCORD']
 all_subjects = list(data['PTID'].unique())
 print(f'Total subjects (training, ACCORD excluded): {len(all_subjects)}')
-print('Studies apart from ACCORD:', data['Study'].unique())
+print('Studies in training set:', sorted(data['Study'].unique()))
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
