@@ -242,6 +242,27 @@ print(f'Final shape: {samples_df.shape}  ({samples_df["PTID"].nunique()} subject
       f'{len(samples_df)} observations)')
 print(f'Feature vector length (incl. time): {len(base_feature_cols) + 1}')
 
+# ---------------------------------------------------------------------------
+# 12. Build baseline-only CSV for 8-year forecast
+#     One row per subject. X = [baseline_features, time=0], Y = [BAG_at_baseline].
+#     dkgp_training.py loads this file and sweeps time 0-96 months for inference.
+# ---------------------------------------------------------------------------
+baseline_samples = {'PTID': [], 'X': [], 'Y': []}
+for ptid, subject in data.groupby('PTID', sort=False):
+    baseline = subject.iloc[0]
+    base_feats = baseline[base_feature_cols].tolist()
+    x = base_feats + [0.0]
+    y = [float(baseline['BAG'])]
+    baseline_samples['PTID'].append(ptid)
+    baseline_samples['X'].append(str(x))
+    baseline_samples['Y'].append(str(y))
+
+baseline_df = pd.DataFrame(baseline_samples)
+accord_baseline_path = os.path.join(data_dir, 'subjectsamples_bag_accord_baseline.csv')
+baseline_df.to_csv(accord_baseline_path, index=False)
+print(f'Saved baseline CSV: {accord_baseline_path}')
+print(f'Baseline shape: {baseline_df.shape}  ({baseline_df["PTID"].nunique()} subjects)')
+
 # Also save a flat demographics CSV used by analyze_accord_predictions.py
 # Includes denormalized BAG (years) so the analysis script can cross-check
 # ground-truth values without relying solely on the prediction CSVs.
