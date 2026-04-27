@@ -213,6 +213,40 @@ def trajectory_grid(df, n, color, suptitle, fname):
     savefig(fig, fname)
 
 
+def error_vs_time_fig(df, color, title, fname):
+    """Mean ± SD absolute error per observed timepoint, with jittered scatter."""
+    tps     = sorted(df['time_months'].unique())
+    tps_yr  = [t / 12 for t in tps]
+    means   = [df[df['time_months'] == tp]['abs_error'].mean() for tp in tps]
+    sds     = [df[df['time_months'] == tp]['abs_error'].std()  for tp in tps]
+    counts  = [df[df['time_months'] == tp]['abs_error'].count() for tp in tps]
+
+    fig, ax = plt.subplots(figsize=(6, 3.8))
+    rng = np.random.RandomState(1)
+    for i, tp in enumerate(tps):
+        y = df[df['time_months'] == tp]['abs_error'].values
+        jitter = rng.uniform(-0.08, 0.08, size=len(y))
+        ax.scatter(tps_yr[i] + jitter, y,
+                   s=4, alpha=0.18, color=color, linewidths=0, rasterized=True)
+    ax.errorbar(tps_yr, means, yerr=sds,
+                fmt='o', color=C_BLACK, ms=5, lw=1.2, capsize=3,
+                label='Mean ± SD')
+    ax.plot(tps_yr, means, color=C_BLACK, lw=1, alpha=0.6)
+    ax.set_xlabel('Time from baseline (years)')
+    ax.set_ylabel('Absolute Error (years)')
+    ax.set_title(title)
+    ax.set_xticks(tps_yr)
+    ax.set_xticklabels(tp_xtick_labels(tps_yr))
+    ax.legend(frameon=False)
+    # Annotate n per timepoint
+    for t_yr, n in zip(tps_yr, counts):
+        ax.text(t_yr, ax.get_ylim()[0] - 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]),
+                f'n={n}', ha='center', va='top', fontsize=6, color='#666666')
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, fname)
+
+
 def tp_xtick_labels(tps_yr):
     return ['BL' if t == 0 else str(int(t)) for t in tps_yr]
 
@@ -291,6 +325,11 @@ else:
                     '5-Fold CV: Sample Longitudinal Trajectories',
                     'cv_fig4_trajectories.png')
 
+    # Fig 5 — Absolute error vs. time
+    error_vs_time_fig(cv, C_BLUE,
+                      '5-Fold CV: Absolute Error vs. Time',
+                      'cv_fig5_error_vs_time.png')
+
 # ===========================================================================
 # PART 2 — ACCORD Observed-Timepoint Predictions
 # ===========================================================================
@@ -325,6 +364,11 @@ else:
     trajectory_grid(accord_obs, args.n_traj, C_GREEN,
                     'ACCORD: Sample Longitudinal Trajectories',
                     'accord_obs_fig2_trajectories.png')
+
+    # Fig 3 — Absolute error vs. time
+    error_vs_time_fig(accord_obs, C_GREEN,
+                      'ACCORD Observed: Absolute Error vs. Time',
+                      'accord_obs_fig3_error_vs_time.png')
 
 # ===========================================================================
 # PART 3 — ACCORD 8-Year Prospective Forecast
@@ -463,6 +507,31 @@ else:
     despine(ax)
     fig.tight_layout()
     savefig(fig, 'accord_forecast_fig4_distribution.png')
+
+    # Fig 5 — Prediction uncertainty (CI width) over time
+    # No ground truth available for the forecast, so CI width shows how
+    # model uncertainty grows as predictions extend further from baseline.
+    ciw_by_tp = (forecast
+                 .groupby('time_months', as_index=False)
+                 .agg(mean_ciw = ('interval_width', 'mean'),
+                      sd_ciw   = ('interval_width', 'std')))
+    t_ciw = ciw_by_tp['time_months'] / 12
+
+    fig, ax = plt.subplots(figsize=(5.5, 3.5))
+    ax.fill_between(t_ciw,
+                    ciw_by_tp['mean_ciw'] - ciw_by_tp['sd_ciw'],
+                    ciw_by_tp['mean_ciw'] + ciw_by_tp['sd_ciw'],
+                    color=C_ORANGE, alpha=0.25)
+    ax.plot(t_ciw, ciw_by_tp['mean_ciw'], color=C_ORANGE, lw=2,
+            marker='o', ms=4, label='Mean CI width')
+    ax.set_xlabel('Time from baseline (years)')
+    ax.set_ylabel('90% CI Width (years)')
+    ax.set_title('ACCORD Forecast: Prediction Uncertainty Over Time')
+    ax.set_xticks(tps_yr); ax.set_xticklabels(xlabels)
+    ax.legend(frameon=False)
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, 'accord_forecast_fig5_uncertainty_vs_time.png')
 
 # ---------------------------------------------------------------------------
 # Summary
