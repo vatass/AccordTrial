@@ -624,6 +624,32 @@ for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
 
 # ---------------------------------------------------------------------------
+# Normalize ACCORD data using the training stats computed above
+# Apply the same pipeline: Baseline_Age, non-negative Time, BAG, MUSE z-score,
+# clinical z-score, Sex encoding, fillna — identical to what was done on data.
+# ---------------------------------------------------------------------------
+accord_data = accord_data_unnorm.copy()
+
+accord_data['Baseline_Age'] = accord_data.groupby('PTID')['Age'].transform('min')
+accord_data = accord_data[accord_data['Time'] >= 0].copy()
+
+accord_data['BAG'] = accord_data['SPARE_BA'] - accord_data['Age']
+
+accord_df_hmuse = accord_data.filter(regex=r'^DLMUSE_')
+for i, c in enumerate(accord_df_hmuse.columns):
+    accord_data[c] = (accord_df_hmuse[c] - mean_hmuse[i]) / std_hmuse[i]
+
+accord_data['Age']      = (accord_data['Age']      - mean_age)     / std_age
+accord_data['SPARE_BA'] = (accord_data['SPARE_BA'] - mean_spareba) / std_spareba
+accord_data['BAG']      = (accord_data['BAG']      - mean_bag)     / std_bag
+accord_data['Sex'].replace(['M', 'F'], [0, 1], inplace=True)
+
+for cf in clinical_features:
+    accord_data[cf] = accord_data[cf].fillna(-1)
+
+print(f'ACCORD normalized: {accord_data["PTID"].nunique()} subjects, {len(accord_data)} rows')
+
+# ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
 all_subjects = list(data['PTID'].unique())
