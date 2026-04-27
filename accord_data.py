@@ -42,6 +42,7 @@ print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
 
 print(data['MRID'].unique())
+sys.exit(0)
 
 # ---------------------------------------------------------------------------
 # 2. Merge SPARE_BA by MRID

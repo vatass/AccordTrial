@@ -154,6 +154,7 @@ print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
 data = data[data['Study'] != 'BIOCARD']
 
+
 # Forward-fill missing diagnosis
 data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
 
@@ -181,6 +182,9 @@ for u in unique_diagnosis:
 
 data['DX_AD'].replace(old_diagnosis, new_diagnosis, inplace=True)
 
+
+
+
 # Remove non-AD-spectrum diagnoses
 data = data[~data['DX_AD'].isin(
     ['Vascular Dementia', 'other', 'FTD', '', 'PD', 'Lewy Body Dementia', 'Hydrocephalus', 'PCA', 'TBI']
@@ -194,12 +198,15 @@ data['DX_AD'].replace(
     [0,    1,     2,    -1,    -1,      1,            2], inplace=True
 )
 
+
 # ---------------------------------------------------------------------------
-# 4. Keep only subjects that are CN (0) at all timepoints
+# 4. Keep only subjects that are CN (0 or -1 ) at all timepoints
 # ---------------------------------------------------------------------------
-cn_mask = data.groupby('PTID')['DX_AD'].apply(lambda x: (x == 0).all())
+cn_mask = data.groupby('PTID')['DX_AD'].apply(lambda x: x.isin([0, -1]).all())
 data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
 print(f'CN-only subjects: {data["PTID"].nunique()}')
+
+print(list(data['Study'].unique()))
 
 # ---------------------------------------------------------------------------
 # 5. Keep subjects with >1 acquisition and report per-study counts
@@ -291,7 +298,17 @@ print(f'Dropped {before_rows - data.shape[0]} rows with unparseable dates within
 print(f'Subjects after per-row date filter: {data["PTID"].nunique()}')
 print('Remaining studies:', sorted(data['Study'].unique()))
 
+
 additional_data = pd.read_csv('additional_data.csv')
+
+additional_data = additional_data.rename(columns={
+    col: col.replace("H_DL_MUSE_Volume", "DLMUSE")
+    for col in additional_data.columns
+    if col.startswith("H_DL_MUSE_Volume")
+})
+
+
+dlmuse_cols = [c for c in additional_data.columns if c.startswith('DLMUSE_') and int(c[7:]) < 300]
 
 print('Studies in additional data:', additional_data['Study'].unique())
 print('Columns in additional data:', additional_data.columns.tolist())
@@ -391,8 +408,6 @@ print(f'additional_data: {additional_data.shape[0]} rows, {additional_data["PTID
 data = pd.concat([data, additional_data], ignore_index=True)
 print(f'After concat: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
-sys.exit(0)
-
 # Validation
 n_dup = data.duplicated(subset=['PTID', 'MRID']).sum()
 assert n_dup == 0, f'{n_dup} duplicate (PTID, MRID) pairs found after concat!'
@@ -417,12 +432,10 @@ before_rows = data.shape[0]
 before_subj = data['PTID'].nunique()
 
 nan_muse_mask  = data[dlmuse_cols].isna().any(axis=1)
-zero_muse_mask = (data[dlmuse_cols] == 0).any(axis=1)
-bad_muse_mask  = nan_muse_mask | zero_muse_mask
+bad_muse_mask  = nan_muse_mask 
 
 print(f'\n=== DLMUSE quality filter ({len(dlmuse_cols)} ROIs) ===')
 print(f'  Rows with NaN  in any ROI: {nan_muse_mask.sum()}')
-print(f'  Rows with zero in any ROI: {zero_muse_mask.sum()}')
 # Per-study breakdown of dropped rows
 print('  Dropped rows per study:')
 for _study in sorted(data['Study'].unique()):
@@ -437,7 +450,10 @@ print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
+accord_data = data[data['Study'] == 'ACCORD']
+
 data_unnorm = data.copy()
+accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
 
 print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
@@ -506,12 +522,16 @@ for cf in clinical_features:
 # ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
+
+data = data[data['Study']!='ACCORD']
 all_subjects = list(data['PTID'].unique())
 print(f'Total subjects: {len(all_subjects)}')
 
-data['PTID'] = data['PTID'].astype(str)
-data.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
-print(f'Saved: {data_dir}longitudinal_covariates_bag_allstudies.csv')
+
+accord_subjects = list(accord_data['PTID'].unique())
+
+print('Studies apart accord', data['Study'].unique())
+print('ACCORD Subjects', accord_data['PTID'].nunique())
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
@@ -528,8 +548,15 @@ samples, subject_data, num_samples, list_of_subjects, list_of_subject_ids, cnt, 
 
 samples_df = pd.DataFrame(data=samples)
 longitudinal_covariates_df = pd.DataFrame(data=longitudinal_covariates)
-# longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
+longitudinal_covariates_df.to_csv(data_dir + 'longitudinal_covariates_bag_allstudies.csv', index=False)
 samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
+
+
+accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
+
+
+
 
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation

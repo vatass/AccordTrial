@@ -11,11 +11,7 @@ from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.model_selection import StratifiedKFold, KFold
 
 
-<<<<<<< HEAD
-def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse):
-=======
 def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, target, features,hmuse, genomic, followup, derivedroi,  visualize=False):
->>>>>>> claude/store-predictions-plotting-1owH5
     '''
     subjects: list of the subject ids
     dataframe: dataframe with all the data

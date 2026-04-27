@@ -161,7 +161,13 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
 data_dir = './data/'
 
-data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+# data = pd.read_pickle('/cbica/projects/ISTAGING/Pipelines/ISTAGING_Data_Consolidation_2020/v2.0/istaging.pkl.gz')
+data = pd.read_csv('../LongGPClustering/iSTAGING_with_SPARE_AD_BA.csv')
+
+
+for c in data.columns: 
+    print(c)
+
 
 print(f'Loaded: {data.shape}')
 
@@ -186,7 +192,7 @@ data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == '
 data['Date'] = data['Date'].astype('datetime64[ns]')
 
 # Drop rows missing all H_MUSE ROIs
-hmuse = list(data.filter(regex='H_MUSE*'))
+hmuse = list(data.filter(regex='H_DL_MUSE*'))
 data = data.dropna(axis=0, subset=hmuse)
 print(f'After H_MUSE NaN removal: {data["PTID"].nunique()} subjects')
 
@@ -277,10 +283,39 @@ print(f'Subjects after time deduplication: {data["PTID"].nunique()}')
 
 data_unnorm = data.copy()
 
+
+# ---------------------------------------------------------------------------
+# Save studies with no extractable MRID date as additional_data.csv
+# These are the studies that longitudinal_data.py removes (no calendar date
+# in MRID), so they are contributed here via longitudinal_data_spare_ba.py.
+# ---------------------------------------------------------------------------
+undatable_studies = [
+    'BLSA', 'GSP', 'HCP-Aging', 'HCP-YA', 'OASIS3', 'OASIS4',
+    'PreventAD', 'SHIP', 'UKBIOBANK', 'WRAP', 'WHICAP', 'WRAP', 'PENN' 
+]
+additional_data = data[data['Study'].isin(undatable_studies)].copy()
+for c in additional_data.columns: 
+    print(c)
+if not additional_data.empty:
+    dlmuse_cols = [c for c in data.columns if c.startswith('H_DL_MUSE_Volume_') and int(c[17:]) < 300]
+    fixed_cols = ['Age', 'Sex', 'MRID', 'PTID', 'SPARE_BA', 'Delta_Baseline', 'Study', 'Time']
+    save_cols = [c for c in fixed_cols if c in data.columns] + dlmuse_cols
+    additional_data[save_cols].to_csv('additional_data.csv', index=False)
+    print(f'Saved additional_data.csv: {additional_data["PTID"].nunique()} subjects '
+          f'from studies {sorted(additional_data["Study"].unique())}')
+else:
+    print('No undatable studies found in data; additional_data.csv not created.')
+
+sys.exit(0)
+
+
+
+
+
 # ---------------------------------------------------------------------------
 # 7. Z-score MUSE ROIs
 # ---------------------------------------------------------------------------
-subjects_df_hmuse = data.filter(regex=r'^MUSE_')
+subjects_df_hmuse = data.filter(regex=r'H_DL_MUSE_')
 mean_hmuse = subjects_df_hmuse.mean(axis=0).tolist()
 std_hmuse = subjects_df_hmuse.std(axis=0).tolist()
 
@@ -344,27 +379,6 @@ data['PTID'] = data['PTID'].astype(str)
 data.to_csv(data_dir + 'data_bag_allstudies.csv', index=False)
 print(f'Saved: {data_dir}data_bag_allstudies.csv')
 
-# ---------------------------------------------------------------------------
-# Save studies with no extractable MRID date as additional_data.csv
-# These are the studies that longitudinal_data.py removes (no calendar date
-# in MRID), so they are contributed here via longitudinal_data_spare_ba.py.
-# ---------------------------------------------------------------------------
-undatable_studies = [
-    'BLSA', 'GSP', 'HCP-Aging', 'HCP-YA', 'OASIS3', 'OASIS4',
-    'PreventAD', 'SHIP', 'UKBIOBANK', 'WRAP', 'WHICAP', 'WRAP', 'PENN' 
-]
-additional_data = data[data['Study'].isin(undatable_studies)].copy()
-if not additional_data.empty:
-    dlmuse_cols = [col for col in data.columns if col.startswith('DLMUSE_')]
-    fixed_cols = ['Age', 'Sex', 'MRID', 'PTID', 'SPARE_BA', 'Delta_Baseline', 'Study', 'Time']
-    save_cols = [c for c in fixed_cols if c in data.columns] + dlmuse_cols
-    additional_data[save_cols].to_csv('additional_data.csv', index=False)
-    print(f'Saved additional_data.csv: {additional_data["PTID"].nunique()} subjects '
-          f'from studies {sorted(additional_data["Study"].unique())}')
-else:
-    print('No undatable studies found in data; additional_data.csv not created.')
-
-sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
