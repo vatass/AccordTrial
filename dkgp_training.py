@@ -73,6 +73,7 @@ logger.info(f"Loaded {len(subject_ids)} subjects")
 accord_test_data = pd.read_csv('./data/subjectsamples_bag_accord.csv')
 
 print(accord_test_data.shape)
+print('Subjects', accord_test_data['PTID'].nunique())
 
 # Load train/test split
 logger.info(f"Loading train IDs from {train_ids_file}")
