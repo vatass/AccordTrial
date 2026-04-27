@@ -269,21 +269,26 @@ def error_by_age_fig(df, color, title, fname, age_col='BaselineAge'):
     groups = [df[df['age_group'] == lbl]['abs_error'].dropna().values
               for lbl in labels]
     counts = [len(g) for g in groups]
-    means  = [g.mean() if len(g) else np.nan for g in groups]
-    filled = [i for i, g in enumerate(groups) if len(g) > 0]
+
+    # Build all box/scatter data in one pass to guarantee consistent lengths
+    nonempty = [(i, g) for i, g in enumerate(groups) if len(g) > 0]
+    if not nonempty:
+        print(f'  (skipping {fname} — no data after age binning)')
+        return
+    bp_positions = [i for i, _ in nonempty]
+    bp_data      = [g for _, g in nonempty]
+    bp_means     = [g.mean() for _, g in nonempty]
 
     fig, ax = plt.subplots(figsize=(6.5, 3.8))
     rng = np.random.RandomState(2)
-    for i, g in enumerate(groups):
-        if len(g) == 0:
-            continue
+    for i, g in nonempty:
         jitter = rng.uniform(-0.18, 0.18, size=len(g))
         ax.scatter(i + jitter, g, s=4, alpha=0.18,
                    color=color, linewidths=0, rasterized=True)
 
-    bp = ax.boxplot(
-        [g for g in groups if len(g) > 0],
-        positions=[i for i, g in enumerate(groups) if len(g) > 0],
+    ax.boxplot(
+        bp_data,
+        positions=bp_positions,
         widths=0.45, patch_artist=True,
         medianprops=dict(color=C_RED, lw=1.8),
         boxprops=dict(facecolor='none', edgecolor=C_BLACK, lw=0.9),
@@ -293,7 +298,7 @@ def error_by_age_fig(df, color, title, fname, age_col='BaselineAge'):
     )
 
     # Mean markers
-    ax.scatter(filled, [means[i] for i in filled],
+    ax.scatter(bp_positions, bp_means,
                marker='D', s=22, color=C_BLACK, zorder=5, label='Mean')
 
     ax.set_xticks(range(len(labels)))
