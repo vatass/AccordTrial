@@ -219,34 +219,41 @@ def trajectory_grid(df, n, color, suptitle, fname):
 
 
 def error_vs_time_fig(df, color, title, fname):
-    """Mean ± SD absolute error per observed timepoint, with jittered scatter."""
-    tps     = sorted(df['time_months'].unique())
-    tps_yr  = [t / 12 for t in tps]
-    means   = [df[df['time_months'] == tp]['abs_error'].mean() for tp in tps]
-    sds     = [df[df['time_months'] == tp]['abs_error'].std()  for tp in tps]
-    counts  = [df[df['time_months'] == tp]['abs_error'].count() for tp in tps]
+    """Mean ± SD absolute error binned by year, with jittered scatter.
+
+    time_months can be irregular (e.g. 33, 34, 35 …); we round to the
+    nearest integer year so the x-axis stays clean.
+    """
+    df = df.copy()
+    df['year_bin'] = (df['time_months'] / 12).round().astype(int)
+
+    bins   = sorted(df['year_bin'].unique())
+    means  = [df[df['year_bin'] == b]['abs_error'].mean()  for b in bins]
+    sds    = [df[df['year_bin'] == b]['abs_error'].std()   for b in bins]
+    counts = [df[df['year_bin'] == b]['abs_error'].count() for b in bins]
 
     fig, ax = plt.subplots(figsize=(6, 3.8))
     rng = np.random.RandomState(1)
-    for i, tp in enumerate(tps):
-        y = df[df['time_months'] == tp]['abs_error'].values
-        jitter = rng.uniform(-0.08, 0.08, size=len(y))
-        ax.scatter(tps_yr[i] + jitter, y,
+    for b in bins:
+        y      = df[df['year_bin'] == b]['abs_error'].values
+        jitter = rng.uniform(-0.25, 0.25, size=len(y))
+        ax.scatter(b + jitter, y,
                    s=4, alpha=0.18, color=color, linewidths=0, rasterized=True)
-    ax.errorbar(tps_yr, means, yerr=sds,
+
+    ax.errorbar(bins, means, yerr=sds,
                 fmt='o', color=C_BLACK, ms=5, lw=1.2, capsize=3,
                 label='Mean ± SD')
-    ax.plot(tps_yr, means, color=C_BLACK, lw=1, alpha=0.6)
+    ax.plot(bins, means, color=C_BLACK, lw=1, alpha=0.6)
+
     ax.set_xlabel('Time from baseline (years)')
     ax.set_ylabel('Absolute Error (years)')
     ax.set_title(title)
-    ax.set_xticks(tps_yr)
-    ax.set_xticklabels(tp_xtick_labels(tps_yr))
+    ax.set_xticks(bins)
+    ax.set_xticklabels(
+        [f'{"BL" if b == 0 else str(b)}\n(n={n})' for b, n in zip(bins, counts)],
+        fontsize=7,
+    )
     ax.legend(frameon=False)
-    # Annotate n per timepoint
-    for t_yr, n in zip(tps_yr, counts):
-        ax.text(t_yr, ax.get_ylim()[0] - 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]),
-                f'n={n}', ha='center', va='top', fontsize=6, color='#666666')
     despine(ax)
     fig.tight_layout()
     savefig(fig, fname)
