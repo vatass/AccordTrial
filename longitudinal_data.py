@@ -488,10 +488,7 @@ print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
 
-accord_data = data[data['Study'] == 'ACCORD']
-
 data_unnorm = data.copy()
-accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
 
 print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
@@ -552,6 +549,14 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
+# Capture ACCORD slice NOW — after BAG is computed and normalized
+accord_data        = data[data['Study'] == 'ACCORD']
+accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
+
+print(f'ACCORD subjects: {accord_data["PTID"].nunique()}')
+print('ACCORD BAG (normalized):')
+print(accord_data['BAG'].describe())
+
 clinical_features = ['Sex', 'Age', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
     data[cf] = data[cf].fillna(-1)
@@ -559,15 +564,11 @@ for cf in clinical_features:
 # ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
-data = data[data['Study']!='ACCORD']
+# Exclude ACCORD from the training set (held out as prospective test cohort)
+data = data[data['Study'] != 'ACCORD']
 all_subjects = list(data['PTID'].unique())
-print(f'Total subjects: {len(all_subjects)}')
-
-accord_subjects = list(accord_data['PTID'].unique())
-print(accord_data['BAG'].describe())
-sys.exit(0)
-print('Studies apart accord', data['Study'].unique())
-print('ACCORD Subjects', accord_data['PTID'].nunique())
+print(f'Total subjects (training, ACCORD excluded): {len(all_subjects)}')
+print('Studies apart from ACCORD:', data['Study'].unique())
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
