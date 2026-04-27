@@ -198,4 +198,13 @@ print(f'Final shape: {samples_df.shape}  ({samples_df["PTID"].nunique()} subject
       f'{len(samples_df)} observations)')
 print(f'Feature vector length (incl. time): {len(base_feature_cols) + 1}')
 
+# Also save a flat demographics CSV used by analyze_accord_predictions.py
+# (needs PTID, Time, Sex, Age per row — unnormalized BAG not required)
+demo_cols = ['PTID', 'Time', 'Sex']
+if 'Age' in data.columns:
+    demo_cols.append('Age')
+accord_demo_path = os.path.join(data_dir, 'accord_data_bag_processed.csv')
+data[demo_cols].to_csv(accord_demo_path, index=False)
+print(f'Saved demographics CSV: {accord_demo_path}')
+
 

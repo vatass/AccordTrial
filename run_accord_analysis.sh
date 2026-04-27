@@ -4,7 +4,7 @@
 set -e
 
 python analyze_accord_predictions.py \
-    --inference_dir   inference \
+    --inference_dir   models \
     --accord_data     data/accord_data_bag_processed.csv \
     --norm_stats      data/normalization_stats.pkl \
     --output_dir      analysis/accord_bag \

@@ -36,11 +36,15 @@ os.makedirs(args.output_dir, exist_ok=True)
 # ---------------------------------------------------------------------------
 fold_dfs = []
 for fold in range(args.n_folds):
+    # dkgp_training.py saves accord predictions alongside the model checkpoint
     path = os.path.join(args.inference_dir,
-                        f'accord_bag_fold{fold}',
-                        f'predictions_accord_BAG_{fold}.csv')
+                        f'bag_fold{fold}',
+                        f'accord_predictions_BAG_0_{fold}.csv')
     if os.path.exists(path):
         df = pd.read_csv(path)
+        # Normalise column names to what the rest of this script expects
+        df = df.rename(columns={'ground_truth': 'real_BAG',
+                                 'predicted':    'predicted_value'})
         df['fold'] = fold
         fold_dfs.append(df)
         print(f'Fold {fold}: {len(df)} rows ({df["PTID"].nunique()} subjects)')
@@ -48,7 +52,11 @@ for fold in range(args.n_folds):
         print(f'WARNING: {path} not found — skipping fold {fold}')
 
 if not fold_dfs:
-    raise FileNotFoundError('No fold inference results found. Run run_accord_inference.sh first.')
+    raise FileNotFoundError(
+        'No ACCORD fold predictions found. '
+        'Expected: models/bag_fold{i}/accord_predictions_BAG_0_{i}.csv — '
+        'make sure dkgp_training.py has completed for all folds.'
+    )
 
 all_preds = pd.concat(fold_dfs, ignore_index=True)
 all_preds['PTID'] = all_preds['PTID'].astype(str)
