@@ -422,6 +422,12 @@ if accord_obs_raw is None:
 else:
     accord_obs_raw['PTID'] = accord_obs_raw['PTID'].astype(str)
     accord_obs = ensemble_predictions(accord_obs_raw)
+
+    accord_obs_path = os.path.join(args.output_dir, 'accord_observed_ensemble.csv')
+    accord_obs.to_csv(accord_obs_path, index=False)
+    print(f'  Saved accord_observed_ensemble.csv  '
+          f'({accord_obs["PTID"].nunique()} subjects, {len(accord_obs)} observations)')
+
     m_acc_obs = print_metrics(accord_obs, 'ACCORD Observed (5-fold ensemble)')
 
     # Merge baseline age from demographics (stored as z-score; helper denormalizes)
