@@ -101,11 +101,20 @@ for t in test_ids:
     if t in train_ids:
         raise ValueError('Test Samples belong to the train!')
 
+# --- Carve out a validation split (15% of training subjects, by subject) ---
+rng_val = np.random.RandomState(42)
+n_val = max(1, int(0.15 * len(train_ids)))
+val_ids = list(rng_val.choice(train_ids, size=n_val, replace=False))
+actual_train_ids = [tid for tid in train_ids if tid not in set(val_ids)]
+logger.info(f'Train/val split: {len(actual_train_ids)} train, {len(val_ids)} val subjects')
+
 # Prepare data
-train_x = datasamples[datasamples['PTID'].isin(train_ids)]['X']
-train_y = datasamples[datasamples['PTID'].isin(train_ids)]['Y']
-test_x = datasamples[datasamples['PTID'].isin(test_ids)]['X']
-test_y = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
+train_x = datasamples[datasamples['PTID'].isin(actual_train_ids)]['X']
+train_y = datasamples[datasamples['PTID'].isin(actual_train_ids)]['Y']
+val_x   = datasamples[datasamples['PTID'].isin(val_ids)]['X']
+val_y   = datasamples[datasamples['PTID'].isin(val_ids)]['Y']
+test_x  = datasamples[datasamples['PTID'].isin(test_ids)]['X']
+test_y  = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
 
 accord_test_x = accord_test_data['X']
 accord_test_y = accord_test_data['Y']
@@ -135,16 +144,22 @@ test_ptids_list = test_data_raw['PTID'].tolist()
 test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_data_raw['X']]
 
 logger.info(f'Train data shape: {train_x.shape}')
+logger.info(f'Val data shape: {val_x.shape}')
 logger.info(f'Test data shape: {test_x.shape}')
 # Process data
-train_x, train_y, test_x, test_y = process_temporal_singletask_data(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
+train_x, train_y, test_x, test_y = process_temporal_singletask_data(
+    train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
+val_x, val_y, _, _ = process_temporal_singletask_data(
+    train_x=val_x, train_y=val_y, test_x=val_x, test_y=val_y, test_ids=val_ids)
 
 # Move to GPU if available
 if torch.cuda.is_available():
     train_x = train_x.cuda(gpu_id)
     train_y = train_y.cuda(gpu_id)
-    test_x = test_x.cuda(gpu_id)
-    test_y = test_y.cuda(gpu_id)
+    val_x   = val_x.cuda(gpu_id)
+    val_y   = val_y.cuda(gpu_id)
+    test_x  = test_x.cuda(gpu_id)
+    test_y  = test_y.cuda(gpu_id)
 
     accord_test_x = accord_test_x.cuda(gpu_id)
     accord_test_y = accord_test_y.cuda(gpu_id)
@@ -162,12 +177,10 @@ logger.info(f"Number of features in accord test data: {accord_test_x.shape[1]}")
 logger.info("=== END VERIFICATION ===")
 
 # Select ROI
-test_y = test_y[:, biomarker_index]
-train_y = train_y[:, biomarker_index]
-accord_test_y = accord_test_y[:, biomarker_index]
-train_y = train_y.squeeze()
-test_y = test_y.squeeze()
-accord_test_y = accord_test_y.squeeze()
+train_y       = train_y[:, biomarker_index].squeeze()
+val_y         = val_y[:, biomarker_index].squeeze()
+test_y        = test_y[:, biomarker_index].squeeze()
+accord_test_y = accord_test_y[:, biomarker_index].squeeze()
 
 # --- NaN guard: drop rows where any feature or target is NaN ---
 nan_x_mask = torch.isnan(train_x).any(dim=1)
@@ -245,36 +258,96 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 # so ExactGP's equality check always sees the correct tensors in the loop.
 deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 
-# Training loop
-iterations = 200
-train_losses = []
-logger.info(f"Training for {iterations} iterations...")
+# Training loop with cosine-annealing LR, val-loss checkpointing, early stopping
+iterations      = 500
+val_freq        = 10    # evaluate val loss every N iterations
+patience        = 20    # early-stopping: stop after this many val checks without improvement
+best_val_loss   = float('inf')
+best_iter       = 0
+no_improve      = 0
+train_losses    = []
+val_losses      = []       # recorded every val_freq iterations
+val_iters       = []       # x-axis for val loss plot
+best_ckpt_path  = os.path.join(output_dir,
+                               f'best_ckpt_{biomarker_name}_{biomarker_index}_{fold}.pth')
+
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations, eta_min=1e-4)
+
+logger.info(f"Training for up to {iterations} iterations "
+            f"(val_freq={val_freq}, patience={patience})...")
 with gpytorch.settings.cholesky_jitter(1e-3):
     for i in range(iterations):
+        # --- train step ---
+        deepkernelmodel.train()
+        likelihood.train()
         optimizer.zero_grad()
         output = deepkernelmodel.forward(train_x)
         loss = -mll(output, train_y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(deepkernelmodel.parameters(), max_norm=1.0)
         optimizer.step()
-
+        scheduler.step()
         train_losses.append(loss.item())
-        if (i+1) % 50 == 0:
-            logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
 
-# Plot and save training loss curve
+        # --- validation step every val_freq iterations ---
+        if (i + 1) % val_freq == 0:
+            deepkernelmodel.eval()
+            likelihood.eval()
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                val_preds = likelihood(deepkernelmodel(val_x))
+                val_loss  = -val_preds.log_prob(val_y).item()
+            val_losses.append(val_loss)
+            val_iters.append(i + 1)
+
+            lr_now = scheduler.get_last_lr()[0]
+            logger.info(f'Iter {i+1}/{iterations} — train: {loss.item():.3f}  '
+                        f'val: {val_loss:.3f}  lr: {lr_now:.2e}')
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_iter     = i + 1
+                no_improve    = 0
+                torch.save({
+                    'model_state_dict':      deepkernelmodel.state_dict(),
+                    'likelihood_state_dict': likelihood.state_dict(),
+                    'optimizer_state_dict':  optimizer.state_dict(),
+                    'iteration':             best_iter,
+                    'val_loss':              best_val_loss,
+                    'train_x':               train_x,
+                    'train_y':               train_y,
+                }, best_ckpt_path)
+                logger.info(f'  → New best val loss {best_val_loss:.3f} at iter {best_iter}')
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    logger.info(f'Early stopping triggered at iter {i+1} '
+                                f'(no improvement for {patience} val checks)')
+                    break
+
+# Load best checkpoint before evaluation
+logger.info(f'Loading best checkpoint from iter {best_iter} (val loss={best_val_loss:.3f})')
+best_ckpt = torch.load(best_ckpt_path)
+deepkernelmodel.load_state_dict(best_ckpt['model_state_dict'])
+likelihood.load_state_dict(best_ckpt['likelihood_state_dict'])
+
+# Plot train + val loss curves
 fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(train_losses, lw=1.2, color='steelblue', label='Train loss (NLL)')
+ax.plot(train_losses, lw=1.0, color='steelblue', alpha=0.8, label='Train NLL')
+ax.plot(val_iters, val_losses, lw=2.0, color='crimson', marker='o',
+        markersize=3, label='Val NLL')
+ax.axvline(best_iter, color='green', lw=1.5, linestyle='--',
+           label=f'Best ckpt (iter {best_iter})')
 ax.set_xlabel('Iteration', fontsize=12)
-ax.set_ylabel('Negative MLL', fontsize=12)
-ax.set_title(f'Training Loss — {biomarker_name} fold {fold}', fontsize=13)
+ax.set_ylabel('Negative log-likelihood', fontsize=12)
+ax.set_title(f'Training / Validation Loss — {biomarker_name} fold {fold}', fontsize=13)
 ax.legend(fontsize=11)
 ax.grid(True, alpha=0.3)
 plt.tight_layout()
-loss_plot_path = os.path.join(output_dir, f'train_loss_{biomarker_name}_{biomarker_index}_{fold}.png')
+loss_plot_path = os.path.join(output_dir,
+                              f'train_loss_{biomarker_name}_{biomarker_index}_{fold}.png')
 fig.savefig(loss_plot_path, dpi=150)
 plt.close(fig)
-logger.info(f'Training loss plot saved to {loss_plot_path}')
+logger.info(f'Loss plot saved to {loss_plot_path}')
 
 # Evaluation
 deepkernelmodel.eval()
