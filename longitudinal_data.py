@@ -294,6 +294,26 @@ else:
 print(f'Subjects after undatable-study removal: {data["PTID"].nunique()}')
 
 # Step 2: Within datable studies, drop individual rows whose MRID date could not be parsed.
+# --- ACCORD-specific diagnostic BEFORE dropping ---
+accord_pre = data[data['Study'] == 'ACCORD']
+accord_nat = accord_pre[accord_pre['Date'].isna()]
+accord_parsed = accord_pre[accord_pre['Date'].notna()]
+
+if len(accord_nat) > 0:
+    # Subjects that will lose ALL rows (only NaT dates)
+    accord_all_nat = accord_nat.groupby('PTID').filter(
+        lambda g: g['PTID'].iloc[0] not in accord_parsed['PTID'].values
+    )
+    print(f'\n=== ACCORD date-filter diagnostic ===')
+    print(f'  Total ACCORD rows    : {len(accord_pre)}')
+    print(f'  Rows with parsed date: {len(accord_parsed)}')
+    print(f'  Rows with NaT date   : {len(accord_nat)}')
+    print(f'  Subjects losing ALL rows (all NaT): {accord_all_nat["PTID"].nunique()}')
+    print(f'  Sample unparseable MRIDs:')
+    for mrid in accord_nat['MRID'].dropna().head(10).tolist():
+        print(f'    {mrid!r}')
+    print('=== end ACCORD diagnostic ===\n')
+
 before_rows = data.shape[0]
 before_subj = data['PTID'].nunique()
 data = data[data['Date'].notna()].copy()
@@ -451,6 +471,22 @@ for _study in sorted(data['Study'].unique()):
     _dropped = (bad_muse_mask & _smask).sum()
     if _dropped > 0:
         print(f'    {_study}: {_dropped}/{_smask.sum()} rows dropped')
+
+# --- ACCORD-specific diagnostic for DLMUSE drops ---
+accord_bad = bad_muse_mask & (data['Study'] == 'ACCORD')
+if accord_bad.any():
+    accord_bad_rows = data[accord_bad]
+    print(f'\n  ACCORD DLMUSE drops: {accord_bad.sum()} rows, '
+          f'{accord_bad_rows["PTID"].nunique()} subjects')
+    # Which columns are responsible?
+    acc_nan_cols  = data.loc[accord_bad, data_dlmuse_cols].isna().any()
+    acc_zero_cols = (data.loc[accord_bad, data_dlmuse_cols] == 0).any()
+    bad_cols = sorted(set(
+        acc_nan_cols[acc_nan_cols].index.tolist() +
+        acc_zero_cols[acc_zero_cols].index.tolist()
+    ))
+    print(f'  Offending DLMUSE columns ({len(bad_cols)}): {bad_cols[:20]}')
+
 data = data[~bad_muse_mask].reset_index(drop=True)
 print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
