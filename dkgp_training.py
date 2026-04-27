@@ -15,6 +15,9 @@ import json
 import time
 import logging
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='Temporal Deep Kernel Single Task GP model for a Biomarker')
 ## Production Parameters
@@ -98,11 +101,20 @@ for t in test_ids:
     if t in train_ids:
         raise ValueError('Test Samples belong to the train!')
 
+# --- Carve out a validation split (15% of training subjects, by subject) ---
+rng_val = np.random.RandomState(42)
+n_val = max(1, int(0.15 * len(train_ids)))
+val_ids = list(rng_val.choice(train_ids, size=n_val, replace=False))
+actual_train_ids = [tid for tid in train_ids if tid not in set(val_ids)]
+logger.info(f'Train/val split: {len(actual_train_ids)} train, {len(val_ids)} val subjects')
+
 # Prepare data
-train_x = datasamples[datasamples['PTID'].isin(train_ids)]['X']
-train_y = datasamples[datasamples['PTID'].isin(train_ids)]['Y']
-test_x = datasamples[datasamples['PTID'].isin(test_ids)]['X']
-test_y = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
+train_x = datasamples[datasamples['PTID'].isin(actual_train_ids)]['X']
+train_y = datasamples[datasamples['PTID'].isin(actual_train_ids)]['Y']
+val_x   = datasamples[datasamples['PTID'].isin(val_ids)]['X']
+val_y   = datasamples[datasamples['PTID'].isin(val_ids)]['Y']
+test_x  = datasamples[datasamples['PTID'].isin(test_ids)]['X']
+test_y  = datasamples[datasamples['PTID'].isin(test_ids)]['Y']
 
 accord_test_x = accord_test_data['X']
 accord_test_y = accord_test_data['Y']
@@ -132,16 +144,22 @@ test_ptids_list = test_data_raw['PTID'].tolist()
 test_time_list = [float(x_str.strip('][').split(', ')[-1]) for x_str in test_data_raw['X']]
 
 logger.info(f'Train data shape: {train_x.shape}')
+logger.info(f'Val data shape: {val_x.shape}')
 logger.info(f'Test data shape: {test_x.shape}')
 # Process data
-train_x, train_y, test_x, test_y = process_temporal_singletask_data(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
+train_x, train_y, test_x, test_y = process_temporal_singletask_data(
+    train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y, test_ids=test_ids)
+val_x, val_y, _, _ = process_temporal_singletask_data(
+    train_x=val_x, train_y=val_y, test_x=val_x, test_y=val_y, test_ids=val_ids)
 
 # Move to GPU if available
 if torch.cuda.is_available():
     train_x = train_x.cuda(gpu_id)
     train_y = train_y.cuda(gpu_id)
-    test_x = test_x.cuda(gpu_id)
-    test_y = test_y.cuda(gpu_id)
+    val_x   = val_x.cuda(gpu_id)
+    val_y   = val_y.cuda(gpu_id)
+    test_x  = test_x.cuda(gpu_id)
+    test_y  = test_y.cuda(gpu_id)
 
     accord_test_x = accord_test_x.cuda(gpu_id)
     accord_test_y = accord_test_y.cuda(gpu_id)
@@ -159,12 +177,10 @@ logger.info(f"Number of features in accord test data: {accord_test_x.shape[1]}")
 logger.info("=== END VERIFICATION ===")
 
 # Select ROI
-test_y = test_y[:, biomarker_index]
-train_y = train_y[:, biomarker_index]
-accord_test_y = accord_test_y[:, biomarker_index]
-train_y = train_y.squeeze()
-test_y = test_y.squeeze()
-accord_test_y = accord_test_y.squeeze()
+train_y       = train_y[:, biomarker_index].squeeze()
+val_y         = val_y[:, biomarker_index].squeeze()
+test_y        = test_y[:, biomarker_index].squeeze()
+accord_test_y = accord_test_y[:, biomarker_index].squeeze()
 
 # --- NaN guard: drop rows where any feature or target is NaN ---
 nan_x_mask = torch.isnan(train_x).any(dim=1)
@@ -242,24 +258,113 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 # so ExactGP's equality check always sees the correct tensors in the loop.
 deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 
-# Training loop
-iterations = 1000
-logger.info(f"Training for {iterations} iterations...")
+# Training loop with cosine-annealing LR, val-loss checkpointing, early stopping
+iterations      = 500
+val_freq        = 10    # evaluate val loss every N iterations
+patience        = 20    # early-stopping: stop after this many val checks without improvement
+best_val_loss   = float('inf')
+best_iter       = 0
+no_improve      = 0
+train_losses    = []
+val_losses      = []       # recorded every val_freq iterations
+val_iters       = []       # x-axis for val loss plot
+best_ckpt_path  = os.path.join(output_dir,
+                               f'best_ckpt_{biomarker_name}_{biomarker_index}_{fold}.pth')
+
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations, eta_min=1e-4)
+
+logger.info(f"Training for up to {iterations} iterations "
+            f"(val_freq={val_freq}, patience={patience})...")
 with gpytorch.settings.cholesky_jitter(1e-3):
     for i in range(iterations):
+        # --- train step ---
+        deepkernelmodel.train()
+        likelihood.train()
         optimizer.zero_grad()
         output = deepkernelmodel.forward(train_x)
         loss = -mll(output, train_y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(deepkernelmodel.parameters(), max_norm=1.0)
         optimizer.step()
+        scheduler.step()
+        train_losses.append(loss.item())
 
-        if (i+1) % 50 == 0:
-            logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
+        # --- validation step every val_freq iterations ---
+        if (i + 1) % val_freq == 0:
+            deepkernelmodel.eval()
+            likelihood.eval()
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                val_preds = likelihood(deepkernelmodel(val_x))
+                val_loss  = -val_preds.log_prob(val_y).item()
+            val_losses.append(val_loss)
+            val_iters.append(i + 1)
+
+            lr_now = scheduler.get_last_lr()[0]
+            logger.info(f'Iter {i+1}/{iterations} — train: {loss.item():.3f}  '
+                        f'val: {val_loss:.3f}  lr: {lr_now:.2e}')
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_iter     = i + 1
+                no_improve    = 0
+                torch.save({
+                    'model_state_dict':      deepkernelmodel.state_dict(),
+                    'likelihood_state_dict': likelihood.state_dict(),
+                    'optimizer_state_dict':  optimizer.state_dict(),
+                    'iteration':             best_iter,
+                    'val_loss':              best_val_loss,
+                    'train_x':               train_x,
+                    'train_y':               train_y,
+                }, best_ckpt_path)
+                logger.info(f'  → New best val loss {best_val_loss:.3f} at iter {best_iter}')
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    logger.info(f'Early stopping triggered at iter {i+1} '
+                                f'(no improvement for {patience} val checks)')
+                    break
+
+# Load best checkpoint before evaluation
+logger.info(f'Loading best checkpoint from iter {best_iter} (val loss={best_val_loss:.3f})')
+best_ckpt = torch.load(best_ckpt_path)
+deepkernelmodel.load_state_dict(best_ckpt['model_state_dict'])
+likelihood.load_state_dict(best_ckpt['likelihood_state_dict'])
+
+# Plot train + val loss curves
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(train_losses, lw=1.0, color='steelblue', alpha=0.8, label='Train NLL')
+ax.plot(val_iters, val_losses, lw=2.0, color='crimson', marker='o',
+        markersize=3, label='Val NLL')
+ax.axvline(best_iter, color='green', lw=1.5, linestyle='--',
+           label=f'Best ckpt (iter {best_iter})')
+ax.set_xlabel('Iteration', fontsize=12)
+ax.set_ylabel('Negative log-likelihood', fontsize=12)
+ax.set_title(f'Training / Validation Loss — {biomarker_name} fold {fold}', fontsize=13)
+ax.legend(fontsize=11)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+loss_plot_path = os.path.join(output_dir,
+                              f'train_loss_{biomarker_name}_{biomarker_index}_{fold}.png')
+fig.savefig(loss_plot_path, dpi=150)
+plt.close(fig)
+logger.info(f'Loss plot saved to {loss_plot_path}')
 
 # Evaluation
 deepkernelmodel.eval()
 likelihood.eval()
+
+# Load BAG normalization stats so all metrics are reported in original years
+_norm_stats_path = os.path.join(os.path.dirname(data_file), 'normalization_stats.pkl') \
+    if os.path.exists(os.path.join(os.path.dirname(data_file), 'normalization_stats.pkl')) \
+    else './data/normalization_stats.pkl'
+with open(_norm_stats_path, 'rb') as _f:
+    _norm_stats = pickle.load(_f)
+bag_mean = _norm_stats['BAG']['mean']
+bag_std  = _norm_stats['BAG']['std']
+logger.info(f'BAG denormalization: mean={bag_mean:.3f} yr, std={bag_std:.3f} yr')
+
+def denorm(x_np):
+    return x_np * bag_std + bag_mean
 
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
     f_preds = deepkernelmodel(test_x)
@@ -268,27 +373,34 @@ with torch.no_grad(), gpytorch.settings.fast_pred_var():
     lower = mean - 1.645 * f_preds.stddev
     upper = mean + 1.645 * f_preds.stddev
 
-# Calculate metrics
-mae_pop = mean_absolute_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
-mse_pop = mean_squared_error(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
+# Denormalize before computing metrics
+test_y_dn = denorm(test_y.cpu().detach().numpy())
+mean_dn   = denorm(mean.cpu().detach().numpy())
+lower_dn  = denorm(lower.cpu().detach().numpy())
+upper_dn  = denorm(upper.cpu().detach().numpy())
+
+# Calculate metrics (in years)
+mae_pop  = mean_absolute_error(test_y_dn, mean_dn)
+mse_pop  = mean_squared_error(test_y_dn, mean_dn)
 rmse_pop = np.sqrt(mse_pop)
-rsq = r2_score(test_y.cpu().detach().numpy(), mean.cpu().detach().numpy())
+rsq      = r2_score(test_y_dn, mean_dn)
 
 coverage, interval_width, mean_coverage, mean_interval_width = calc_coverage(
-    predictions=mean.cpu().detach().numpy(),
-    groundtruth=test_y.cpu().detach().numpy(),
-    intervals=[lower.cpu().detach().numpy(), upper.cpu().detach().numpy()]
+    predictions=mean_dn,
+    groundtruth=test_y_dn,
+    intervals=[lower_dn, upper_dn]
+)
+coverage, interval_width, mean_coverage, mean_interval_width = (
+    coverage.numpy().astype(int), interval_width.numpy(),
+    mean_coverage.numpy(), mean_interval_width.numpy()
 )
 
-coverage, interval_width, mean_coverage, mean_interval_width = coverage.numpy().astype(int), interval_width.numpy(), mean_coverage.numpy(), mean_interval_width.numpy()
-
-logger.info(f"Results for Biomarker {biomarker_name}:")
-logger.info(f"MAE: {mae_pop:.4f}")
-logger.info(f"MSE: {mse_pop:.4f}")
-logger.info(f"RMSE: {rmse_pop:.4f}")
-logger.info(f"R²: {rsq:.4f}")
-logger.info(f"Coverage: {np.mean(coverage):.4f}")
-logger.info(f"Interval Width: {mean_interval_width:.4f}")
+logger.info(f"Test results for {biomarker_name} (denormalized, in years):")
+logger.info(f"  MAE:            {mae_pop:.4f} yr")
+logger.info(f"  RMSE:           {rmse_pop:.4f} yr")
+logger.info(f"  R²:             {rsq:.4f}")
+logger.info(f"  Coverage (90%): {np.mean(coverage):.4f}")
+logger.info(f"  Interval width: {mean_interval_width:.4f} yr")
 
 # ------------------------------------------------------------------
 # ACCORD Inference
@@ -300,16 +412,22 @@ with torch.no_grad(), gpytorch.settings.fast_pred_var():
     accord_lower = accord_mean - 1.645 * accord_f_preds.stddev
     accord_upper = accord_mean + 1.645 * accord_f_preds.stddev
 
-# Calculate ACCORD metrics
-accord_mae = mean_absolute_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
-accord_mse = mean_squared_error(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+# Denormalize ACCORD predictions
+accord_test_y_dn = denorm(accord_test_y.cpu().detach().numpy())
+accord_mean_dn   = denorm(accord_mean.cpu().detach().numpy())
+accord_lower_dn  = denorm(accord_lower.cpu().detach().numpy())
+accord_upper_dn  = denorm(accord_upper.cpu().detach().numpy())
+
+# Calculate ACCORD metrics (in years)
+accord_mae  = mean_absolute_error(accord_test_y_dn, accord_mean_dn)
+accord_mse  = mean_squared_error(accord_test_y_dn, accord_mean_dn)
 accord_rmse = np.sqrt(accord_mse)
-accord_rsq = r2_score(accord_test_y.cpu().detach().numpy(), accord_mean.cpu().detach().numpy())
+accord_rsq  = r2_score(accord_test_y_dn, accord_mean_dn)
 
 accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = calc_coverage(
-    predictions=accord_mean.cpu().detach().numpy(),
-    groundtruth=accord_test_y.cpu().detach().numpy(),
-    intervals=[accord_lower.cpu().detach().numpy(), accord_upper.cpu().detach().numpy()]
+    predictions=accord_mean_dn,
+    groundtruth=accord_test_y_dn,
+    intervals=[accord_lower_dn, accord_upper_dn]
 )
 accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interval_width = (
     accord_coverage.numpy().astype(int),
@@ -318,31 +436,26 @@ accord_coverage, accord_interval_width, accord_mean_coverage, accord_mean_interv
     accord_mean_interval_width.numpy()
 )
 
-logger.info(f"ACCORD Results for Biomarker {biomarker_name}:")
-logger.info(f"MAE: {accord_mae:.4f}")
-logger.info(f"MSE: {accord_mse:.4f}")
-logger.info(f"RMSE: {accord_rmse:.4f}")
-logger.info(f"R²: {accord_rsq:.4f}")
-logger.info(f"Coverage: {np.mean(accord_coverage):.4f}")
-logger.info(f"Interval Width: {accord_mean_interval_width:.4f}")
+logger.info(f"ACCORD results for {biomarker_name} (denormalized, in years):")
+logger.info(f"  MAE:            {accord_mae:.4f} yr")
+logger.info(f"  RMSE:           {accord_rmse:.4f} yr")
+logger.info(f"  R²:             {accord_rsq:.4f}")
+logger.info(f"  Coverage (90%): {np.mean(accord_coverage):.4f}")
+logger.info(f"  Interval width: {accord_mean_interval_width:.4f} yr")
 
-# ACCORD per-sample predictions DataFrame
-accord_test_y_np   = accord_test_y.cpu().detach().numpy()
-accord_mean_np     = accord_mean.cpu().detach().numpy()
-accord_lower_np    = accord_lower.cpu().detach().numpy()
-accord_upper_np    = accord_upper.cpu().detach().numpy()
-accord_variance_np = accord_variance.cpu().detach().numpy()
-accord_interval_np = accord_upper_np - accord_lower_np
-accord_abs_error   = np.abs(accord_test_y_np - accord_mean_np)
-accord_sq_error    = (accord_test_y_np - accord_mean_np) ** 2
+# ACCORD per-sample predictions DataFrame (denormalized values, in years)
+accord_variance_np = accord_variance.cpu().detach().numpy() * (bag_std ** 2)
+accord_interval_np = accord_upper_dn - accord_lower_dn
+accord_abs_error   = np.abs(accord_test_y_dn - accord_mean_dn)
+accord_sq_error    = (accord_test_y_dn - accord_mean_dn) ** 2
 
 accord_predictions_df = pd.DataFrame({
     'PTID':           accord_ptids_list,
     'time_months':    accord_time_list,
-    'ground_truth':   accord_test_y_np,
-    'predicted':      accord_mean_np,
-    'lower_bound':    accord_lower_np,
-    'upper_bound':    accord_upper_np,
+    'ground_truth':   accord_test_y_dn,
+    'predicted':      accord_mean_dn,
+    'lower_bound':    accord_lower_dn,
+    'upper_bound':    accord_upper_dn,
     'variance':       accord_variance_np,
     'interval_width': accord_interval_np,
     'abs_error':      accord_abs_error,
@@ -380,24 +493,20 @@ logger.info(f"  RMSE — mean: {accord_subject_metrics['rmse'].mean():.4f}")
 logger.info(f"  Coverage — mean: {accord_subject_metrics['coverage_rate'].mean():.4f}")
 
 # ------------------------------------------------------------------
-# Per-sample predictions DataFrame
+# Per-sample predictions DataFrame (denormalized, in years)
 # ------------------------------------------------------------------
-test_y_np      = test_y.cpu().detach().numpy()
-mean_np        = mean.cpu().detach().numpy()
-lower_np       = lower.cpu().detach().numpy()
-upper_np       = upper.cpu().detach().numpy()
-variance_np    = variance.cpu().detach().numpy()
-interval_np    = upper_np - lower_np
-abs_error_np   = np.abs(test_y_np - mean_np)
-sq_error_np    = (test_y_np - mean_np) ** 2
+variance_np  = variance.cpu().detach().numpy() * (bag_std ** 2)
+interval_np  = upper_dn - lower_dn
+abs_error_np = np.abs(test_y_dn - mean_dn)
+sq_error_np  = (test_y_dn - mean_dn) ** 2
 
 predictions_df = pd.DataFrame({
     'PTID':           test_ptids_list,
     'time_months':    test_time_list,
-    'ground_truth':   test_y_np,
-    'predicted':      mean_np,
-    'lower_bound':    lower_np,
-    'upper_bound':    upper_np,
+    'ground_truth':   test_y_dn,
+    'predicted':      mean_dn,
+    'lower_bound':    lower_dn,
+    'upper_bound':    upper_dn,
     'variance':       variance_np,
     'interval_width': interval_np,
     'abs_error':      abs_error_np,
