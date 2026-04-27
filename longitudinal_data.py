@@ -400,18 +400,24 @@ data = data.rename(columns={'delta_days_imaging_baseline': 'Delta_Baseline'})
 # 6. Fix Delta Baseline (first acquisition = 0)
 # ---------------------------------------------------------------------------
 def delta_baseline_fix(data):
-    for pt in data['PTID'].unique():
-        pt_indices = data[data['PTID'] == pt].index
-        base = data.loc[pt_indices[0], 'Delta_Baseline']
-        if base != 0:
-            data.loc[pt_indices, 'Delta_Baseline'] -= base
+    # Subtract the per-subject minimum so the earliest scan is always 0.
+    # Using iloc[0] was wrong when rows are not sorted by Delta_Baseline.
+    min_delta = data.groupby('PTID')['Delta_Baseline'].transform('min')
+    data = data.copy()
+    data['Delta_Baseline'] = data['Delta_Baseline'] - min_delta
     return data
 
 data = delta_baseline_fix(data)
 
+# Sanity check — every subject's minimum Delta_Baseline should now be 0
+bad = []
 for pt in data['PTID'].unique():
-    if data[data['PTID'] == pt].iloc[0]['Delta_Baseline'] != 0.0:
-        print(f'Warning: {pt} has non-zero Delta_Baseline at baseline')
+    if data[data['PTID'] == pt]['Delta_Baseline'].min() != 0.0:
+        bad.append(pt)
+if bad:
+    print(f'Warning: {len(bad)} subjects still have non-zero minimum Delta_Baseline')
+else:
+    print('Delta_Baseline fix OK — all subjects start at 0')
 
 # Time in months (ceiling division)
 data['Time'] = np.ceil(data['Delta_Baseline'] / 30).astype(int)
