@@ -243,7 +243,7 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 
 # Training loop
-iterations = 500
+iterations = 200
 logger.info(f"Training for {iterations} iterations...")
 with gpytorch.settings.cholesky_jitter(1e-3):
     for i in range(iterations):
