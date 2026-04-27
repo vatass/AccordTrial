@@ -6,13 +6,14 @@
 set -e
 
 python analyze_accord_predictions.py \
-    --models_dir  models \
-    --accord_data data/accord_data_bag_processed.csv \
-    --output_dir  analysis/accord_bag \
-    --n_folds     5 \
-    --biomarker   BAG \
-    --biomarker_index 0 \
-    --n_traj      20
+    --models_dir       models \
+    --accord_data      data/accord_data_bag_processed.csv \
+    --covariates_file  data/longitudinal_covariates_bag_allstudies.csv \
+    --output_dir       analysis/accord_bag \
+    --n_folds          5 \
+    --biomarker        BAG \
+    --biomarker_index  0 \
+    --n_traj           20
 
 echo ""
 echo "Figures saved to: analysis/accord_bag/"

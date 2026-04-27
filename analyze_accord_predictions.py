@@ -31,6 +31,8 @@ parser.add_argument('--models_dir',   default='models',
                     help='Root dir containing bag_fold{i}/ subdirectories')
 parser.add_argument('--accord_data',  default='data/accord_data_bag_processed.csv',
                     help='Flat ACCORD CSV with PTID, Time, Sex, Age (written by accord_data.py)')
+parser.add_argument('--covariates_file', default='data/longitudinal_covariates_bag_allstudies.csv',
+                    help='Longitudinal covariates CSV (fallback source of Sex/Age)')
 parser.add_argument('--output_dir',   default='analysis/accord_bag')
 parser.add_argument('--n_folds',      type=int, default=5)
 parser.add_argument('--biomarker',    default='BAG')
@@ -89,23 +91,41 @@ print(f'\nEnsemble: {ensemble["PTID"].nunique()} subjects, '
       f'{ensemble["time_months"].nunique()} timepoints')
 
 # ---------------------------------------------------------------------------
-# 3. Demographics (Sex, Age) from accord_data_bag_processed.csv
+# 3. Demographics (Sex, Age)
+#    Priority: accord_data_bag_processed.csv → longitudinal_covariates_bag_allstudies.csv
 # ---------------------------------------------------------------------------
-demo = pd.DataFrame({'PTID': ensemble['PTID'].unique()})
-demo['PTID'] = demo['PTID'].astype(str)
+demo = pd.DataFrame({'PTID': ensemble['PTID'].unique().astype(str)})
 
-if os.path.exists(args.accord_data):
-    acc = pd.read_csv(args.accord_data)
-    acc['PTID'] = acc['PTID'].astype(str)
-    # Baseline row per subject (Time == 0)
-    baseline = (acc[acc['Time'] == 0]
-                .drop_duplicates('PTID')[['PTID', 'Sex', 'Age']]
-                .copy())
-    demo = demo.merge(baseline, on='PTID', how='left')
-    print(f'Demographics loaded: {demo["Sex"].notna().sum()}/{len(demo)} subjects matched')
-else:
-    print(f'WARNING: {args.accord_data} not found — Sex/Age unavailable')
+def _load_demo(path, ptid_col='PTID', time_col='Time'):
+    """Return a per-subject baseline DataFrame with whatever columns exist."""
+    df = pd.read_csv(path)
+    df[ptid_col] = df[ptid_col].astype(str)
+    if time_col in df.columns:
+        df = df[df[time_col] == 0]
+    keep = [ptid_col] + [c for c in ['Sex', 'Age'] if c in df.columns]
+    return df[keep].drop_duplicates(ptid_col).rename(columns={ptid_col: 'PTID'})
+
+demo_loaded = False
+for demo_path in [args.accord_data, args.covariates_file]:
+    if os.path.exists(demo_path):
+        try:
+            baseline = _load_demo(demo_path)
+            demo = demo.merge(baseline, on='PTID', how='left')
+            matched = demo['Sex'].notna().sum() if 'Sex' in demo.columns else 0
+            print(f'Demographics from {demo_path}: '
+                  f'{matched}/{len(demo)} subjects matched '
+                  f'(cols: {[c for c in ["Sex","Age"] if c in demo.columns]})')
+            demo_loaded = True
+            break
+        except Exception as e:
+            print(f'WARNING: could not load demographics from {demo_path}: {e}')
+
+if not demo_loaded:
+    print('WARNING: no demographics file found — Sex/Age will be unavailable')
+
+if 'Sex' not in demo.columns:
     demo['Sex'] = np.nan
+if 'Age' not in demo.columns:
     demo['Age'] = np.nan
 
 ensemble = ensemble.merge(demo, on='PTID', how='left')
