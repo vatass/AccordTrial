@@ -91,6 +91,7 @@ def savefig(fig, name):
 # Load normalization stats (BAG mean/std from training set)
 # ---------------------------------------------------------------------------
 bag_mean, bag_std = 0.0, 1.0
+age_mean, age_std = 65.0, 10.0  # sensible fallback if pkl missing
 norm_path = os.path.join(args.data_dir, 'normalization_stats.pkl')
 if os.path.exists(norm_path):
     with open(norm_path, 'rb') as f:
@@ -98,7 +99,11 @@ if os.path.exists(norm_path):
     if 'BAG' in ns:
         bag_mean = float(ns['BAG']['mean'])
         bag_std  = float(ns['BAG']['std'])
+    if 'Age' in ns:
+        age_mean = float(ns['Age']['mean'])
+        age_std  = float(ns['Age']['std'])
     print(f'Normalization stats: BAG mean={bag_mean:.3f} yr, std={bag_std:.3f} yr')
+    print(f'                     Age mean={age_mean:.3f} yr, std={age_std:.3f} yr')
 else:
     print(f'WARNING: {norm_path} not found — predictions assumed already in years')
 
@@ -247,6 +252,62 @@ def error_vs_time_fig(df, color, title, fname):
     savefig(fig, fname)
 
 
+def error_by_age_fig(df, color, title, fname, age_col='BaselineAge'):
+    """Box-plot of absolute error stratified by age group (5 bins)."""
+    if age_col not in df.columns or df[age_col].isna().all():
+        print(f'  (skipping {fname} — {age_col} not available)')
+        return
+
+    df = df.copy()
+    # Age is stored as a z-score; denormalize to years
+    df['age_yr'] = df[age_col] * age_std + age_mean
+
+    bins   = [0,  55, 65, 75, 85, 200]
+    labels = ['<55', '55–65', '65–75', '75–85', '≥85']
+    df['age_group'] = pd.cut(df['age_yr'], bins=bins, labels=labels, right=False)
+
+    groups = [df[df['age_group'] == lbl]['abs_error'].dropna().values
+              for lbl in labels]
+    counts = [len(g) for g in groups]
+    means  = [g.mean() if len(g) else np.nan for g in groups]
+    filled = [i for i, g in enumerate(groups) if len(g) > 0]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.8))
+    rng = np.random.RandomState(2)
+    for i, g in enumerate(groups):
+        if len(g) == 0:
+            continue
+        jitter = rng.uniform(-0.18, 0.18, size=len(g))
+        ax.scatter(i + jitter, g, s=4, alpha=0.18,
+                   color=color, linewidths=0, rasterized=True)
+
+    bp = ax.boxplot(
+        [g for g in groups if len(g) > 0],
+        positions=[i for i, g in enumerate(groups) if len(g) > 0],
+        widths=0.45, patch_artist=True,
+        medianprops=dict(color=C_RED, lw=1.8),
+        boxprops=dict(facecolor='none', edgecolor=C_BLACK, lw=0.9),
+        whiskerprops=dict(color=C_BLACK, lw=0.8),
+        capprops=dict(color=C_BLACK, lw=0.8),
+        flierprops=dict(marker='', markersize=0),
+    )
+
+    # Mean markers
+    ax.scatter(filled, [means[i] for i in filled],
+               marker='D', s=22, color=C_BLACK, zorder=5, label='Mean')
+
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels([f'{lbl}\n(n={n})' for lbl, n in zip(labels, counts)],
+                       fontsize=8)
+    ax.set_xlabel('Baseline Age Group (years)')
+    ax.set_ylabel('Absolute Error (years)')
+    ax.set_title(title)
+    ax.legend(frameon=False, fontsize=8)
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, fname)
+
+
 def tp_xtick_labels(tps_yr):
     return ['BL' if t == 0 else str(int(t)) for t in tps_yr]
 
@@ -330,6 +391,12 @@ else:
                       '5-Fold CV: Absolute Error vs. Time',
                       'cv_fig5_error_vs_time.png')
 
+    # Fig 6 — Absolute error by age group
+    error_by_age_fig(cv, C_BLUE,
+                     '5-Fold CV: Absolute Error by Age Group',
+                     'cv_fig6_error_by_age.png',
+                     age_col='BaselineAge')
+
 # ===========================================================================
 # PART 2 — ACCORD Observed-Timepoint Predictions
 # ===========================================================================
@@ -344,6 +411,18 @@ else:
     accord_obs_raw['PTID'] = accord_obs_raw['PTID'].astype(str)
     accord_obs = ensemble_predictions(accord_obs_raw)
     m_acc_obs = print_metrics(accord_obs, 'ACCORD Observed (5-fold ensemble)')
+
+    # Merge baseline age from demographics (stored as z-score; helper denormalizes)
+    demo_path = os.path.join(args.data_dir, 'accord_data_bag_processed.csv')
+    if os.path.exists(demo_path):
+        demo = pd.read_csv(demo_path)
+        demo['PTID'] = demo['PTID'].astype(str)
+        if 'Age' in demo.columns:
+            baseline_age = (demo.sort_values('Time')
+                                .groupby('PTID', as_index=False)
+                                .first()[['PTID', 'Age']]
+                                .rename(columns={'Age': 'BaselineAge'}))
+            accord_obs = accord_obs.merge(baseline_age, on='PTID', how='left')
 
     # Per-fold breakdown
     print('\nPer-fold breakdown:')
@@ -369,6 +448,12 @@ else:
     error_vs_time_fig(accord_obs, C_GREEN,
                       'ACCORD Observed: Absolute Error vs. Time',
                       'accord_obs_fig3_error_vs_time.png')
+
+    # Fig 4 — Absolute error by age group
+    error_by_age_fig(accord_obs, C_GREEN,
+                     'ACCORD Observed: Absolute Error by Age Group',
+                     'accord_obs_fig4_error_by_age.png',
+                     age_col='BaselineAge')
 
 # ===========================================================================
 # PART 3 — ACCORD 8-Year Prospective Forecast
