@@ -444,13 +444,54 @@ else:
 
     # Per-fold breakdown
     print('\nPer-fold breakdown:')
+    accord_fold_rows = []
     for fold, g in accord_obs_raw.groupby('fold'):
-        mae  = g['abs_error'].mean()
-        rmse = np.sqrt(g['squared_error'].mean())
-        r2   = r2_score(g['ground_truth'], g['predicted'])
-        cov  = g['covered'].mean()
-        print(f"  fold {fold}: n={g['PTID'].nunique():3d}  "
-              f"MAE={mae:.3f}  RMSE={rmse:.3f}  R²={r2:.4f}  Cov={cov:.3f}")
+        row = dict(
+            fold   = int(fold),
+            n_subj = g['PTID'].nunique(),
+            n_obs  = len(g),
+            mae    = g['abs_error'].mean(),
+            rmse   = np.sqrt(g['squared_error'].mean()),
+            r2     = r2_score(g['ground_truth'], g['predicted']),
+            cov    = g['covered'].mean(),
+            ciw    = g['interval_width'].mean(),
+        )
+        accord_fold_rows.append(row)
+        print(f"  fold {row['fold']}: n={row['n_subj']:3d}  "
+              f"MAE={row['mae']:.3f}  RMSE={row['rmse']:.3f}  "
+              f"R²={row['r2']:.4f}  Cov={row['cov']:.3f}")
+
+    accord_fold_df = pd.DataFrame(accord_fold_rows)
+    accord_fold_df.to_csv(
+        os.path.join(args.output_dir, 'accord_fold_metrics.csv'), index=False)
+    print(f'  Best fold by MAE  : fold {accord_fold_df.loc[accord_fold_df["mae"].idxmin(), "fold"]}  '
+          f'(MAE={accord_fold_df["mae"].min():.3f})')
+    print(f'  Best fold by R²   : fold {accord_fold_df.loc[accord_fold_df["r2"].idxmax(), "fold"]}  '
+          f'(R²={accord_fold_df["r2"].max():.4f})')
+
+    # Fig — Per-fold ACCORD metrics (MAE / RMSE / R²)
+    fig, axes = plt.subplots(1, 4, figsize=(12, 3))
+    for ax, (col, ylabel) in zip(axes, [
+            ('mae', 'MAE (yr)'), ('rmse', 'RMSE (yr)'),
+            ('r2',  'R²'),       ('cov',  'Coverage 90%')]):
+        vals = accord_fold_df[col].values
+        bars = ax.bar(accord_fold_df['fold'], vals, color=C_GREEN, alpha=0.8, width=0.55)
+        ax.axhline(vals.mean(), color=C_RED, lw=1.1, ls='--',
+                   label=f'mean = {vals.mean():.3f}')
+        # Highlight best fold
+        if col in ('mae', 'rmse', 'ciw'):
+            best = int(accord_fold_df.loc[accord_fold_df[col].idxmin(), 'fold'])
+        else:
+            best = int(accord_fold_df.loc[accord_fold_df[col].idxmax(), 'fold'])
+        bars[best].set_edgecolor(C_BLACK)
+        bars[best].set_linewidth(1.5)
+        ax.set_xlabel('Fold'); ax.set_ylabel(ylabel); ax.set_title(f'ACCORD {ylabel}')
+        ax.set_xticks(accord_fold_df['fold'])
+        ax.legend(frameon=False, fontsize=7)
+        despine(ax)
+    fig.suptitle('Per-Fold ACCORD Metrics (best fold outlined)', fontsize=10, y=1.02)
+    fig.tight_layout()
+    savefig(fig, 'accord_obs_fig0_fold_metrics.png')
 
     # Fig 1 — Predicted vs. Observed
     pred_vs_obs_fig(accord_obs, C_GREEN,
