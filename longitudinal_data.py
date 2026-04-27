@@ -591,7 +591,11 @@ samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 features = [name for name in data.columns if name.startswith('DLMUSE_') and int(name[7:]) < 300]
 features.extend(clinical_features)
 
+
+accord_subjects = list(accord_data['PTID'].unique())
+print('ACCORD Subjects', len(accord_subjects))
 accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+accord_samples_df = pd.DataFrame(data=samples)
 accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
 
 # ---------------------------------------------------------------------------
