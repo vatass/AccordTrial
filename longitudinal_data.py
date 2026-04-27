@@ -323,7 +323,6 @@ print(f'Subjects after per-row date filter: {data["PTID"].nunique()}')
 print('Remaining studies:', sorted(data['Study'].unique()))
 _accord_n(data, '6. after date filter (NaT rows dropped)')
 
-
 additional_data = pd.read_csv('additional_data.csv')
 
 additional_data = additional_data.rename(columns={
@@ -648,10 +647,15 @@ features.extend(clinical_features)
 
 accord_subjects = list(accord_data['PTID'].unique())
 print('ACCORD Subjects', len(accord_subjects))
-accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
-accord_samples_df = pd.DataFrame(data=samples)
-accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
 
+print('ACCORD data', len(accord_data['PTID'].unique()))
+print('ACCORD data unnorm', len(accord_data_unnorm['PTID'].unique()))
+
+accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects, accord_list_of_subject_ids, accord_cnt, accord_longitudinal_covariates = create_baseline_temporal_dataset(subjects=accord_subjects, dataframe=accord_data, dataframeunnorm=accord_data_unnorm,  target=target, features=features, hmuse=hmuse,  genomic=0, followup=0, derivedroi='all', visualize=False)
+accord_samples_df = pd.DataFrame(data=accord_samples)
+accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
+print('ACCORD Subjects', accord_samples_df['PTID'].nunique())
+sys.exit(0)
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
 # ---------------------------------------------------------------------------
