@@ -662,6 +662,44 @@ accord_samples, accord_subject_data, accord_num_samples, accord_list_of_subjects
 accord_samples_df = pd.DataFrame(data=accord_samples)
 accord_samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'accord'+'.csv')
 print('ACCORD Subjects', accord_samples_df['PTID'].nunique())
+
+# ---------------------------------------------------------------------------
+# Quality assurance — accord_samples_df must be NaN-free
+# ---------------------------------------------------------------------------
+qa_failed = False
+
+nan_counts = accord_samples_df.isna().sum()
+if nan_counts.any():
+    print('QA FAIL — NaN values in accord_samples_df columns:')
+    for col, n in nan_counts[nan_counts > 0].items():
+        print(f'  {col}: {n} NaNs')
+    qa_failed = True
+else:
+    print('QA pass — no NaN in accord_samples_df columns (PTID/X/Y)')
+
+x_nan_mask = accord_samples_df['X'].str.contains(r'\bnan\b', case=False, regex=True)
+if x_nan_mask.any():
+    print(f'QA FAIL — {x_nan_mask.sum()} X vectors contain NaN:')
+    for _, row in accord_samples_df[x_nan_mask][['PTID', 'X']].head(5).iterrows():
+        print(f'  PTID={row["PTID"]}  X={row["X"][:120]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside X feature vectors')
+
+y_nan_mask = accord_samples_df['Y'].str.contains(r'\bnan\b', case=False, regex=True)
+if y_nan_mask.any():
+    print(f'QA FAIL — {y_nan_mask.sum()} Y vectors contain NaN:')
+    for _, row in accord_samples_df[y_nan_mask][['PTID', 'Y']].head(5).iterrows():
+        print(f'  PTID={row["PTID"]}  Y={row["Y"]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside Y target vectors')
+
+if qa_failed:
+    raise ValueError('accord_samples_df failed NaN QA — fix upstream NaN sources.')
+print('QA complete — accord_samples_df is clean.')
+# ---------------------------------------------------------------------------
+
 sys.exit(0)
 # ---------------------------------------------------------------------------
 # 13. 5-Fold Cross Validation
