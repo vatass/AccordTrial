@@ -120,6 +120,12 @@ def create_baseline_temporal_dataset(subjects, dataframe, dataframeunnorm, targe
 
 data_dir = './data/'
 
+def _accord_n(df, step):
+    """Print ACCORD subject and row count at a given pipeline step."""
+    n_subj = df[df['Study'] == 'ACCORD']['PTID'].nunique()
+    n_rows = (df['Study'] == 'ACCORD').sum()
+    print(f'  [ACCORD] {step}: {n_subj} subjects, {n_rows} rows')
+
 data = pd.read_csv('/cbica/home/harmang/harmonization_evaluation/istaging_3_0.csv')
 
 print(f'Loaded: {data.shape}')
@@ -135,10 +141,7 @@ if 'SPARE_BA' in data.columns:
 data = data.merge(spare_ba[['MRID', 'SPARE_BA']], on='MRID', how='left')
 n_matched = data['SPARE_BA'].notna().sum()
 print(f'After SPARE_BA merge: {n_matched}/{len(data)} rows have SPARE_BA ({100*n_matched/len(data):.1f}%)')
-
-accord_data = data[data['Study']=='ACCORD']
-
-print('ACCORD Study:', accord_data['PTID'].nunique())
+_accord_n(data, '0. after load & SPARE_BA merge')
 
 # Spot-check: pick a random MRID that exists in spare_ba and verify the value survived the merge
 _sample = spare_ba[spare_ba['MRID'].isin(data['MRID'])].sample(1, random_state=42).iloc[0]
@@ -153,7 +156,7 @@ print(f'Spot-check passed — MRID {_mrid}: SPARE_BA={_actual:.4f} (matches sour
 print('Removing BLSA 1.5T data and BIOCARD...')
 data = data[data['SITE'] != 'BLSA-1.5T']
 data = data[data['Study'] != 'BIOCARD']
-
+_accord_n(data, '1. after BLSA-1.5T / BIOCARD removal')
 
 # Forward-fill missing diagnosis
 data['DX_AD'] = data['DX_AD'].fillna(method='ffill')
@@ -167,6 +170,7 @@ data.loc[data['Study'] == 'PENN', 'PTID'] = 'penn' + data.loc[data['Study'] == '
 hmuse = list(data.filter(regex=r'^DMUSE_'))
 data = data.dropna(axis=0, subset=hmuse)
 print(f'After MUSE NaN removal: {data["PTID"].nunique()} subjects')
+_accord_n(data, '2. after DMUSE NaN removal')
 
 # ---------------------------------------------------------------------------
 # 3. Map Diagnosis
@@ -186,6 +190,7 @@ data['DX_AD'].replace(old_diagnosis, new_diagnosis, inplace=True)
 data = data[~data['DX_AD'].isin(
     ['Vascular Dementia', 'other', 'FTD', '', 'PD', 'Lewy Body Dementia', 'Hydrocephalus', 'PCA', 'TBI']
 )]
+_accord_n(data, '3. after non-AD-spectrum DX removal')
 
 if data['DX_AD'].isna().sum():
     data.loc[data['DX_AD'].isna(), 'DX_AD'] = 'unk'
@@ -202,6 +207,7 @@ data['DX_AD'].replace(
 cn_mask = data.groupby('PTID')['DX_AD'].apply(lambda x: x.isin([0, -1]).all())
 data = data[data['PTID'].isin(cn_mask[cn_mask].index)]
 print(f'CN-only subjects: {data["PTID"].nunique()}')
+_accord_n(data, '4. after CN-only filter')
 
 print(list(data['Study'].unique()))
 
@@ -209,6 +215,7 @@ print(list(data['Study'].unique()))
 # 5. Keep subjects with >1 acquisition and report per-study counts
 # ---------------------------------------------------------------------------
 data = data.groupby('PTID').filter(lambda x: x.shape[0] > 1)
+_accord_n(data, '5. after >1 acquisition filter')
 
 print('\n=== Studies with Multiple Acquisitions ===')
 studies_with_multiple = []
@@ -294,6 +301,7 @@ print(f'Dropped {before_rows - data.shape[0]} rows with unparseable dates within
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'Subjects after per-row date filter: {data["PTID"].nunique()}')
 print('Remaining studies:', sorted(data['Study'].unique()))
+_accord_n(data, '6. after date filter (NaT rows dropped)')
 
 
 additional_data = pd.read_csv('additional_data.csv')
@@ -416,6 +424,7 @@ before_dedup = data['PTID'].nunique()
 data = data.groupby(['PTID', 'Time']).agg(lambda x: x.iloc[0]).reset_index()
 print(f'Subjects after time deduplication: {data["PTID"].nunique()} '
       f'(was {before_dedup}, lost {before_dedup - data["PTID"].nunique()})')
+_accord_n(data, '7. after time deduplication')
 
 # ---------------------------------------------------------------------------
 # DLMUSE quality filter on main data (before concat)
@@ -440,6 +449,7 @@ data = data[~bad_muse_mask].reset_index(drop=True)
 print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
+_accord_n(data, '8. after DLMUSE quality filter (main data)')
 
 # Concatenate additional_data (undatable studies, already filtered above)
 print(f'\nadditional_data: {additional_data.shape[0]} rows, {additional_data["PTID"].nunique()} subjects')
@@ -487,6 +497,7 @@ data = data[~bad_muse_mask].reset_index(drop=True)
 print(f'  Dropped {before_rows - data.shape[0]} rows total '
       f'({before_subj - data["PTID"].nunique()} subjects lost entirely)')
 print(f'  Remaining: {data.shape[0]} rows, {data["PTID"].nunique()} subjects')
+_accord_n(data, '9. after DLMUSE quality filter (post-concat)')
 
 data_unnorm = data.copy()
 
@@ -516,6 +527,7 @@ data['Baseline_Age'] = data.groupby('PTID')['Age'].transform('min')
 
 # Keep only non-negative timepoints
 data = data[data['Time'] >= 0]
+_accord_n(data, '10. after non-negative timepoints filter')
 
 # ---------------------------------------------------------------------------
 # 9. BAG = SPARE_BA - Age  (computed before normalization)
@@ -553,7 +565,7 @@ print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 accord_data        = data[data['Study'] == 'ACCORD']
 accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
 
-print(f'ACCORD subjects: {accord_data["PTID"].nunique()}')
+_accord_n(data, '11. FINAL (after normalization)')
 print('ACCORD BAG (normalized):')
 print(accord_data['BAG'].describe())
 
