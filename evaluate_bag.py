@@ -623,6 +623,168 @@ else:
     fig.tight_layout()
     savefig(fig, 'accord_forecast_fig5_uncertainty_vs_time.png')
 
+    # ------------------------------------------------------------------
+    # Fig 6 — Individual subject trajectories (Nature-quality, 1 per file)
+    # 10 random subjects; special markers at 48 m (4 yr) and 96 m (8 yr).
+    # ------------------------------------------------------------------
+    NATURE_W   = 3.504   # 89 mm — single Nature column, inches
+    NATURE_H   = 3.0
+    NATURE_DPI = 600
+
+    # Nature-specific rcParams override for this block only
+    nature_rc = {
+        'font.family':        'sans-serif',
+        'font.sans-serif':    ['Arial', 'Helvetica', 'DejaVu Sans'],
+        'font.size':          7,
+        'axes.titlesize':     8,
+        'axes.labelsize':     7,
+        'xtick.labelsize':    6,
+        'ytick.labelsize':    6,
+        'legend.fontsize':    6,
+        'lines.linewidth':    1.2,
+        'axes.linewidth':     0.6,
+        'xtick.major.width':  0.6,
+        'ytick.major.width':  0.6,
+        'xtick.major.size':   2.5,
+        'ytick.major.size':   2.5,
+        'savefig.dpi':        NATURE_DPI,
+        'savefig.bbox':       'tight',
+        'savefig.pad_inches': 0.04,
+    }
+
+    # Key timepoints of interest (months → years)
+    KEY_MONTHS = {48: '4 yr', 96: '8 yr'}
+    KEY_COLORS = {48: C_RED, 96: C_ORANGE}
+
+    subj_dir = os.path.join(args.output_dir, 'accord_subject_trajectories')
+    os.makedirs(subj_dir, exist_ok=True)
+
+    rng_s = np.random.RandomState(7)
+    subject_ptids = rng_s.choice(forecast['PTID'].unique(), size=10, replace=False)
+
+    with plt.rc_context(nature_rc):
+        for ptid in subject_ptids:
+            s = forecast[forecast['PTID'] == ptid].sort_values('time_months')
+            t = s['time_months'] / 12
+
+            fig, ax = plt.subplots(figsize=(NATURE_W, NATURE_H))
+
+            # 90 % CI band
+            ax.fill_between(t, s['lower_bound'], s['upper_bound'],
+                            color=C_BLUE, alpha=0.18, linewidth=0)
+
+            # Trajectory line
+            ax.plot(t, s['predicted'], color=C_BLUE, lw=1.4, zorder=3)
+
+            # Regular timepoint markers (small, open)
+            regular_mask = ~s['time_months'].isin(KEY_MONTHS)
+            ax.scatter(t[regular_mask],
+                       s.loc[regular_mask, 'predicted'],
+                       s=12, color=C_BLUE, zorder=4,
+                       edgecolors='white', linewidths=0.4)
+
+            # Special markers and annotations at 48 m and 96 m
+            for km, klabel in KEY_MONTHS.items():
+                kc = KEY_COLORS[km]
+                row = s[s['time_months'] == km]
+                if row.empty:
+                    continue
+                t_k   = float(row['time_months'].iloc[0]) / 12
+                y_k   = float(row['predicted'].iloc[0])
+                y_lo  = float(row['lower_bound'].iloc[0])
+                y_hi  = float(row['upper_bound'].iloc[0])
+
+                # Vertical reference line
+                ax.axvline(t_k, color=kc, lw=0.7, ls='--', alpha=0.55, zorder=2)
+
+                # Star marker
+                ax.scatter(t_k, y_k, marker='*', s=80, color=kc,
+                           edgecolors='white', linewidths=0.4, zorder=6)
+
+                # Value annotation (above or below depending on space)
+                y_range = s['upper_bound'].max() - s['lower_bound'].min()
+                offset  = y_range * 0.10
+                va      = 'bottom'
+                y_ann   = y_hi + offset * 0.4
+                ax.annotate(
+                    f'{klabel}\n{y_k:+.1f} yr',
+                    xy=(t_k, y_k), xytext=(t_k, y_ann),
+                    ha='center', va=va, fontsize=5.5, color=kc,
+                    arrowprops=dict(arrowstyle='-', color=kc,
+                                   lw=0.5, alpha=0.7),
+                )
+
+            # Axes
+            ax.set_xlabel('Time from baseline (years)')
+            ax.set_ylabel('Brain Age Gap (years)')
+            ax.set_xticks(tps_yr)
+            ax.set_xticklabels(xlabels)
+            ax.set_title(f'Subject {ptid}', pad=4)
+
+            # Subtle legend for key timepoints only
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color=C_BLUE, lw=1.4, label='Predicted BAG'),
+                Line2D([0], [0], color=C_BLUE, lw=0, marker='*',
+                       markersize=6, markerfacecolor=C_RED,
+                       label='4-yr & 8-yr marks'),
+            ]
+            ax.legend(handles=legend_elements, frameon=False,
+                      loc='upper left', handlelength=1.2)
+
+            despine(ax)
+            fig.tight_layout()
+
+            fname_subj = os.path.join(subj_dir, f'subject_{ptid}_forecast.png')
+            fig.savefig(fname_subj)
+            plt.close(fig)
+
+    print(f'  Saved 10 individual subject trajectories → {subj_dir}/')
+
+    # Companion panel: 2 × 5 grid of the same 10 subjects (one figure for
+    # convenient manuscript review)
+    with plt.rc_context(nature_rc):
+        fig, axes = plt.subplots(2, 5,
+                                 figsize=(NATURE_W * 5 + 0.3, NATURE_H * 2 + 0.3),
+                                 sharey=False)
+        for ax, ptid in zip(axes.flat, subject_ptids):
+            s = forecast[forecast['PTID'] == ptid].sort_values('time_months')
+            t = s['time_months'] / 12
+
+            ax.fill_between(t, s['lower_bound'], s['upper_bound'],
+                            color=C_BLUE, alpha=0.18, linewidth=0)
+            ax.plot(t, s['predicted'], color=C_BLUE, lw=1.2, zorder=3)
+
+            regular_mask = ~s['time_months'].isin(KEY_MONTHS)
+            ax.scatter(t[regular_mask],
+                       s.loc[regular_mask, 'predicted'],
+                       s=9, color=C_BLUE, zorder=4,
+                       edgecolors='white', linewidths=0.3)
+
+            for km, klabel in KEY_MONTHS.items():
+                kc  = KEY_COLORS[km]
+                row = s[s['time_months'] == km]
+                if row.empty:
+                    continue
+                t_k = float(row['time_months'].iloc[0]) / 12
+                y_k = float(row['predicted'].iloc[0])
+                ax.axvline(t_k, color=kc, lw=0.6, ls='--', alpha=0.5, zorder=2)
+                ax.scatter(t_k, y_k, marker='*', s=55, color=kc,
+                           edgecolors='white', linewidths=0.3, zorder=6)
+
+            ax.set_xticks(tps_yr)
+            ax.set_xticklabels(xlabels, fontsize=5)
+            ax.set_title(f'{ptid}', fontsize=6.5, pad=2)
+            ax.set_xlabel('Time (yr)', fontsize=6)
+            ax.set_ylabel('BAG (yr)',  fontsize=6)
+            despine(ax)
+
+        fig.suptitle('ACCORD 8-Year BAG Forecast — Individual Trajectories\n'
+                     '★ = 4-yr and 8-yr key timepoints',
+                     fontsize=8, y=1.01)
+        fig.tight_layout(h_pad=1.2, w_pad=0.8)
+        savefig(fig, 'accord_forecast_fig6_subject_panel.png')
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
