@@ -651,7 +651,6 @@ samples_df.to_csv(data_dir + 'subjectsamples_bag_'+'allstudies'+'.csv')
 features = [name for name in data.columns if name.startswith('DLMUSE_') and int(name[7:]) < 300]
 features.extend(clinical_features)
 
-
 accord_subjects = list(accord_data['PTID'].unique())
 print('ACCORD Subjects', len(accord_subjects))
 
