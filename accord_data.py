@@ -40,9 +40,7 @@ data = data[data['Study'] == 'ACCORD']
 
 print('Subjects', data['PTID'].nunique())
 print(f'Loaded: {data.shape}')
-
-print(data['MRID'].unique())
-sys.exit(0)
+print('Sample MRIDs:', data['MRID'].unique()[:5])
 
 # ---------------------------------------------------------------------------
 # 2. Merge SPARE_BA by MRID
