@@ -1,4 +1,7 @@
 data/
 models/
 analysis/
-inference/ 
+inference/
+__pycache__/
+*.pyc
+*.pyo
