@@ -542,6 +542,18 @@ _accord_n(data, '9. after DLMUSE quality filter (post-concat)')
 
 data_unnorm = data.copy()
 
+# ---------------------------------------------------------------------------
+# Exclude ACCORD from training data BEFORE computing any normalization stats.
+# ACCORD is the prospective held-out cohort; including it in the normalization
+# would constitute data leakage because accord_data.py loads the saved pkl
+# files to normalize ACCORD for inference.
+# ---------------------------------------------------------------------------
+accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD'].copy()
+data               = data[data['Study']        != 'ACCORD'].reset_index(drop=True)
+data_unnorm        = data_unnorm[data_unnorm['Study'] != 'ACCORD'].reset_index(drop=True)
+print(f'\nACCORD held out from normalization: {accord_data_unnorm["PTID"].nunique()} subjects')
+print(f'Training data (ACCORD excluded)  : {data["PTID"].nunique()} subjects')
+
 print('Studies', data['Study'].unique())
 print('Subjects', data['PTID'].nunique())
 
@@ -602,13 +614,10 @@ print(f'  Age:      mean={mean_age:.2f}, std={std_age:.2f}')
 print(f'  SPARE_BA: mean={mean_spareba:.2f}, std={std_spareba:.2f}')
 print(f'  BAG:      mean={mean_bag:.2f}, std={std_bag:.2f}')
 
-# Capture ACCORD slice NOW — after BAG is computed and normalized
-accord_data        = data[data['Study'] == 'ACCORD']
-accord_data_unnorm = data_unnorm[data_unnorm['Study'] == 'ACCORD']
-
-_accord_n(data, '11. FINAL (after normalization)')
-print('ACCORD BAG (normalized):')
-print(accord_data['BAG'].describe())
+# ACCORD is already excluded from data — print raw BAG stats from unnorm slice
+accord_bag_yr = accord_data_unnorm['SPARE_BA'] - accord_data_unnorm['Age']
+print(f'\nACCORD BAG (years, unnormalized, n={len(accord_bag_yr)} rows):')
+print(accord_bag_yr.describe())
 
 clinical_features = ['Sex', 'Age', 'BAG', 'PTID', 'Delta_Baseline', 'Time']
 for cf in clinical_features:
@@ -617,11 +626,9 @@ for cf in clinical_features:
 # ---------------------------------------------------------------------------
 # 11. Save CSV (BAG biomarker)
 # ---------------------------------------------------------------------------
-# Exclude ACCORD from the training set (held out as prospective test cohort)
-data = data[data['Study'] != 'ACCORD']
 all_subjects = list(data['PTID'].unique())
 print(f'Total subjects (training, ACCORD excluded): {len(all_subjects)}')
-print('Studies apart from ACCORD:', data['Study'].unique())
+print('Studies in training set:', sorted(data['Study'].unique()))
 
 # ---------------------------------------------------------------------------
 # 12. Save features pickle
