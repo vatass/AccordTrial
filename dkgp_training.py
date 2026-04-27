@@ -72,6 +72,8 @@ logger.info(f"Loaded {len(subject_ids)} subjects")
 
 accord_test_data = pd.read_csv('./data/subjectsamples_bag_accord.csv')
 
+print(accord_test_data.shape)
+
 # Load train/test split
 logger.info(f"Loading train IDs from {train_ids_file}")
 with open(train_ids_file, "rb") as openfile:
@@ -259,7 +261,7 @@ mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, deepkernelmodel)
 deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 
 # Training loop with cosine-annealing LR, val-loss checkpointing, early stopping
-iterations      = 500
+iterations      = 150
 val_freq        = 10    # evaluate val loss every N iterations
 patience        = 20    # early-stopping: stop after this many val checks without improvement
 best_val_loss   = float('inf')
@@ -599,6 +601,8 @@ results = {
 # ------------------------------------------------------------------
 # ACCORD Inference for 8 years ahead
 # ------------------------------------------------------------------
+# TODO: For this load only the dataframe with the baseline information, 
+# so as to run inference on the entire 605 population.
 logger.info("=== ACCORD 8-Year Forecast ===")
 future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
 
