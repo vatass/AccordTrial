@@ -1,0 +1,472 @@
+"""
+evaluate_bag.py — Comprehensive evaluation of DKGP BAG models
+
+Covers:
+  Part 1  5-fold cross-validation evaluation (held-out test sets)
+  Part 2  ACCORD observed-timepoint predictions (ensemble across folds)
+  Part 3  ACCORD 8-year prospective forecast (ensemble across folds)
+
+Usage:
+  python evaluate_bag.py [options]
+
+Reads from:
+  models/bag_fold{i}/predictions_BAG_0_{i}.csv
+  models/bag_fold{i}/accord_predictions_BAG_0_{i}.csv
+  models/bag_fold{i}/accord_eight_year_forecast_BAG_0_{i}.csv
+  data/accord_data_bag_processed.csv
+  data/normalization_stats.pkl
+"""
+
+import argparse
+import os
+import pickle
+
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description='Evaluate DKGP BAG models')
+parser.add_argument('--models_dir',      default='models')
+parser.add_argument('--data_dir',        default='data')
+parser.add_argument('--output_dir',      default='analysis/bag_evaluation')
+parser.add_argument('--n_folds',         type=int, default=5)
+parser.add_argument('--biomarker',       default='BAG')
+parser.add_argument('--biomarker_index', type=int, default=0)
+parser.add_argument('--n_traj',          type=int, default=20,
+                    help='Number of individual trajectories to show in grid plots')
+args = parser.parse_args()
+
+os.makedirs(args.output_dir, exist_ok=True)
+B  = args.biomarker
+BI = args.biomarker_index
+
+# ---------------------------------------------------------------------------
+# Publication-quality style (Okabe-Ito colorblind palette)
+# ---------------------------------------------------------------------------
+plt.rcParams.update({
+    'font.family':        'sans-serif',
+    'font.size':          9,
+    'axes.titlesize':     10,
+    'axes.labelsize':     9,
+    'xtick.labelsize':    8,
+    'ytick.labelsize':    8,
+    'legend.fontsize':    8,
+    'lines.linewidth':    1.2,
+    'axes.linewidth':     0.8,
+    'xtick.major.width':  0.8,
+    'ytick.major.width':  0.8,
+    'figure.dpi':         150,
+    'savefig.dpi':        300,
+    'savefig.bbox':       'tight',
+    'savefig.pad_inches': 0.1,
+})
+
+C_BLUE   = '#0072B2'
+C_ORANGE = '#E69F00'
+C_GREEN  = '#009E73'
+C_RED    = '#D55E00'
+C_PURPLE = '#CC79A7'
+C_BLACK  = '#333333'
+
+
+def despine(ax):
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+
+def savefig(fig, name):
+    path = os.path.join(args.output_dir, name)
+    fig.savefig(path)
+    plt.close(fig)
+    print(f'  Saved {name}')
+
+
+# ---------------------------------------------------------------------------
+# Load normalization stats (BAG mean/std from training set)
+# ---------------------------------------------------------------------------
+bag_mean, bag_std = 0.0, 1.0
+norm_path = os.path.join(args.data_dir, 'normalization_stats.pkl')
+if os.path.exists(norm_path):
+    with open(norm_path, 'rb') as f:
+        ns = pickle.load(f)
+    if 'BAG' in ns:
+        bag_mean = float(ns['BAG']['mean'])
+        bag_std  = float(ns['BAG']['std'])
+    print(f'Normalization stats: BAG mean={bag_mean:.3f} yr, std={bag_std:.3f} yr')
+else:
+    print(f'WARNING: {norm_path} not found — predictions assumed already in years')
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def load_fold_files(prefix):
+    """Concatenate models/bag_fold{i}/{prefix}_{B}_{BI}_{i}.csv for all folds."""
+    frames = []
+    for fold in range(args.n_folds):
+        path = os.path.join(args.models_dir, f'bag_fold{fold}',
+                            f'{prefix}_{B}_{BI}_{fold}.csv')
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            df['fold'] = fold
+            frames.append(df)
+        else:
+            print(f'  [missing] {path}')
+    if not frames:
+        return None
+    return pd.concat(frames, ignore_index=True)
+
+
+def print_metrics(df, label):
+    mae  = df['abs_error'].mean()
+    rmse = np.sqrt(df['squared_error'].mean())
+    r2   = r2_score(df['ground_truth'], df['predicted'])
+    cov  = df['covered'].mean()
+    ciw  = df['interval_width'].mean()
+    print(f'\n{label}')
+    print(f'  Subjects     : {df["PTID"].nunique()}')
+    print(f'  Observations : {len(df)}')
+    print(f'  MAE          : {mae:.3f} yr')
+    print(f'  RMSE         : {rmse:.3f} yr')
+    print(f'  R²           : {r2:.4f}')
+    print(f'  Coverage 90% : {cov:.3f}')
+    print(f'  Mean CI width: {ciw:.3f} yr')
+    return dict(mae=mae, rmse=rmse, r2=r2, coverage=cov, ci_width=ciw,
+                n_subj=df['PTID'].nunique(), n_obs=len(df))
+
+
+def ensemble_predictions(df):
+    """Average per (PTID, time_months) across folds."""
+    agg = {
+        'ground_truth':   ('ground_truth',   'mean'),
+        'predicted':      ('predicted',       'mean'),
+        'lower_bound':    ('lower_bound',     'mean'),
+        'upper_bound':    ('upper_bound',     'mean'),
+        'interval_width': ('interval_width',  'mean'),
+        'abs_error':      ('abs_error',       'mean'),
+        'squared_error':  ('squared_error',   'mean'),
+        'covered':        ('covered',         'mean'),
+    }
+    return df.groupby(['PTID', 'time_months'], as_index=False).agg(**agg)
+
+
+def pred_vs_obs_fig(df, color, title, fname):
+    fig, ax = plt.subplots(figsize=(4.5, 4.5))
+    ax.scatter(df['ground_truth'], df['predicted'],
+               s=5, alpha=0.25, color=color, linewidths=0, rasterized=True)
+    lo = min(df['ground_truth'].min(), df['predicted'].min()) - 1
+    hi = max(df['ground_truth'].max(), df['predicted'].max()) + 1
+    ax.plot([lo, hi], [lo, hi], color=C_BLACK, lw=0.8, ls='--')
+    ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+    ax.set_xlabel('Observed BAG (years)')
+    ax.set_ylabel('Predicted BAG (years)')
+    ax.set_title(title)
+    m = print_metrics.__wrapped__(df) if hasattr(print_metrics, '__wrapped__') else None
+    mae  = df['abs_error'].mean()
+    rmse = np.sqrt(df['squared_error'].mean())
+    r2   = r2_score(df['ground_truth'], df['predicted'])
+    ax.text(0.05, 0.95,
+            f'MAE = {mae:.2f} yr\nRMSE = {rmse:.2f} yr\nR² = {r2:.3f}',
+            transform=ax.transAxes, va='top', fontsize=7.5,
+            bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='none', alpha=0.85))
+    despine(ax)
+    savefig(fig, fname)
+
+
+def trajectory_grid(df, n, color, suptitle, fname):
+    """Grid of individual longitudinal trajectories (subjects with >1 timepoint)."""
+    multi = df.groupby('PTID').filter(lambda g: len(g) > 1)['PTID'].unique()
+    if len(multi) == 0:
+        print(f'  (no multi-timepoint subjects for {fname})')
+        return
+    rng = np.random.RandomState(42)
+    ptids = rng.choice(multi, size=min(n, len(multi)), replace=False)
+    n_cols = 5
+    n_rows = int(np.ceil(len(ptids) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(n_cols * 2.6, n_rows * 2.2), squeeze=False)
+    for idx, ptid in enumerate(ptids):
+        ax = axes[idx // n_cols][idx % n_cols]
+        s  = df[df['PTID'] == ptid].sort_values('time_months')
+        t  = s['time_months'] / 12
+        ax.fill_between(t, s['lower_bound'], s['upper_bound'], color=color, alpha=0.2)
+        ax.plot(t, s['predicted'],    color=color, lw=1.4, label='Predicted')
+        ax.scatter(t, s['ground_truth'], s=16, color=C_BLACK, zorder=3, label='Observed')
+        ax.set_title(str(ptid)[:14], fontsize=6.5)
+        ax.set_xlabel('Time (yr)', fontsize=7)
+        ax.set_ylabel('BAG (yr)',  fontsize=7)
+        ax.tick_params(labelsize=6)
+        despine(ax)
+    for idx in range(len(ptids), n_rows * n_cols):
+        axes[idx // n_cols][idx % n_cols].set_visible(False)
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, loc='lower center', ncol=2, frameon=False,
+               fontsize=8, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(suptitle, fontsize=10)
+    fig.tight_layout()
+    savefig(fig, fname)
+
+
+def tp_xtick_labels(tps_yr):
+    return ['BL' if t == 0 else str(int(t)) for t in tps_yr]
+
+
+# ===========================================================================
+# PART 1 — 5-Fold Cross-Validation
+# ===========================================================================
+print('\n' + '=' * 62)
+print('  PART 1 — 5-Fold Cross-Validation')
+print('=' * 62)
+
+cv_raw = load_fold_files('predictions')
+if cv_raw is None:
+    print('No CV prediction files found — skipping Part 1.')
+else:
+    cv_raw['PTID'] = cv_raw['PTID'].astype(str)
+
+    # Pool across folds (each subject appears in exactly one test fold)
+    cv = cv_raw.copy()
+    m_cv = print_metrics(cv, 'Pooled 5-fold CV (all test observations)')
+
+    # Per-fold breakdown
+    print('\nPer-fold breakdown:')
+    fold_rows = []
+    for fold, g in cv.groupby('fold'):
+        row = dict(
+            fold   = int(fold),
+            n_subj = g['PTID'].nunique(),
+            n_obs  = len(g),
+            mae    = g['abs_error'].mean(),
+            rmse   = np.sqrt(g['squared_error'].mean()),
+            r2     = r2_score(g['ground_truth'], g['predicted']),
+            cov    = g['covered'].mean(),
+            ciw    = g['interval_width'].mean(),
+        )
+        fold_rows.append(row)
+        print(f"  fold {fold}: n={row['n_subj']:3d}  "
+              f"MAE={row['mae']:.3f}  RMSE={row['rmse']:.3f}  "
+              f"R²={row['r2']:.4f}  Cov={row['cov']:.3f}")
+    fold_df = pd.DataFrame(fold_rows)
+    fold_df.to_csv(os.path.join(args.output_dir, 'cv_fold_metrics.csv'), index=False)
+
+    # Fig 1 — Predicted vs. Observed
+    pred_vs_obs_fig(cv, C_BLUE, '5-Fold CV: Predicted vs. Observed',
+                    'cv_fig1_pred_vs_obs.png')
+
+    # Fig 2 — Absolute error distribution
+    fig, ax = plt.subplots(figsize=(4.5, 3))
+    ax.hist(cv['abs_error'], bins=50, color=C_BLUE, edgecolor='none', alpha=0.8)
+    med = cv['abs_error'].median()
+    ax.axvline(med, color=C_RED, lw=1.3, label=f'Median = {med:.2f} yr')
+    ax.set_xlabel('Absolute Error (years)')
+    ax.set_ylabel('Observations')
+    ax.set_title('5-Fold CV: Absolute Error Distribution')
+    ax.legend(frameon=False)
+    despine(ax)
+    savefig(fig, 'cv_fig2_error_dist.png')
+
+    # Fig 3 — Per-fold metric bars (MAE / RMSE / R²)
+    fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+    for ax, (col, ylabel) in zip(axes, [('mae', 'MAE (yr)'), ('rmse', 'RMSE (yr)'), ('r2', 'R²')]):
+        vals = fold_df[col].values
+        ax.bar(fold_df['fold'], vals, color=C_BLUE, alpha=0.8, width=0.55)
+        ax.axhline(vals.mean(), color=C_RED, lw=1.1, ls='--',
+                   label=f'mean = {vals.mean():.3f}')
+        ax.set_xlabel('Fold'); ax.set_ylabel(ylabel); ax.set_title(ylabel)
+        ax.set_xticks(fold_df['fold'])
+        ax.legend(frameon=False, fontsize=7)
+        despine(ax)
+    fig.suptitle('Per-Fold Metrics — 5-Fold CV', fontsize=10, y=1.02)
+    fig.tight_layout()
+    savefig(fig, 'cv_fig3_fold_metrics.png')
+
+    # Fig 4 — Sample longitudinal trajectories
+    trajectory_grid(cv, args.n_traj, C_BLUE,
+                    '5-Fold CV: Sample Longitudinal Trajectories',
+                    'cv_fig4_trajectories.png')
+
+# ===========================================================================
+# PART 2 — ACCORD Observed-Timepoint Predictions
+# ===========================================================================
+print('\n' + '=' * 62)
+print('  PART 2 — ACCORD Observed-Timepoint Predictions')
+print('=' * 62)
+
+accord_obs_raw = load_fold_files('accord_predictions')
+if accord_obs_raw is None:
+    print('No ACCORD observed prediction files found — skipping Part 2.')
+else:
+    accord_obs_raw['PTID'] = accord_obs_raw['PTID'].astype(str)
+    accord_obs = ensemble_predictions(accord_obs_raw)
+    m_acc_obs = print_metrics(accord_obs, 'ACCORD Observed (5-fold ensemble)')
+
+    # Per-fold breakdown
+    print('\nPer-fold breakdown:')
+    for fold, g in accord_obs_raw.groupby('fold'):
+        mae  = g['abs_error'].mean()
+        rmse = np.sqrt(g['squared_error'].mean())
+        r2   = r2_score(g['ground_truth'], g['predicted'])
+        cov  = g['covered'].mean()
+        print(f"  fold {fold}: n={g['PTID'].nunique():3d}  "
+              f"MAE={mae:.3f}  RMSE={rmse:.3f}  R²={r2:.4f}  Cov={cov:.3f}")
+
+    # Fig 1 — Predicted vs. Observed
+    pred_vs_obs_fig(accord_obs, C_GREEN,
+                    'ACCORD: Predicted vs. Observed (ensemble)',
+                    'accord_obs_fig1_pred_vs_obs.png')
+
+    # Fig 2 — Sample ACCORD trajectories
+    trajectory_grid(accord_obs, args.n_traj, C_GREEN,
+                    'ACCORD: Sample Longitudinal Trajectories',
+                    'accord_obs_fig2_trajectories.png')
+
+# ===========================================================================
+# PART 3 — ACCORD 8-Year Prospective Forecast
+# ===========================================================================
+print('\n' + '=' * 62)
+print('  PART 3 — ACCORD 8-Year Prospective Forecast')
+print('=' * 62)
+
+forecast_raw = load_fold_files('accord_eight_year_forecast')
+if forecast_raw is None:
+    print('No 8-year forecast files found — skipping Part 3.')
+else:
+    forecast_raw['PTID'] = forecast_raw['PTID'].astype(str)
+
+    # Ensemble across folds
+    forecast = (forecast_raw
+                .groupby(['PTID', 'time_months'], as_index=False)
+                .agg(predicted      = ('predicted',      'mean'),
+                     lower_bound    = ('lower_bound',    'mean'),
+                     upper_bound    = ('upper_bound',    'mean'),
+                     variance       = ('variance',       'mean'),
+                     interval_width = ('interval_width', 'mean')))
+
+    n_subj = forecast['PTID'].nunique()
+    n_folds_found = forecast_raw['fold'].nunique()
+    print(f'\n8-year forecast ensemble: {n_subj} subjects, '
+          f'{len(forecast)} rows ({n_folds_found} folds)')
+
+    forecast.to_csv(os.path.join(args.output_dir, 'accord_forecast_ensemble.csv'), index=False)
+    print('  Saved accord_forecast_ensemble.csv')
+
+    # Load sex from demographics for stratification
+    sex_map = None
+    demo_path = os.path.join(args.data_dir, 'accord_data_bag_processed.csv')
+    if os.path.exists(demo_path):
+        demo = pd.read_csv(demo_path)
+        demo['PTID'] = demo['PTID'].astype(str)
+        sex_map = (demo.sort_values('Time')
+                       .groupby('PTID', as_index=False)
+                       .first()[['PTID', 'Sex']])
+        forecast = forecast.merge(sex_map, on='PTID', how='left')
+        n_sex = forecast['Sex'].notna().sum()
+        print(f'  Sex mapped for {n_sex}/{len(forecast)} rows')
+
+    tps     = sorted(forecast['time_months'].unique())
+    tps_yr  = [t / 12 for t in tps]
+    xlabels = tp_xtick_labels(tps_yr)
+
+    # Population summary per timepoint
+    pop = (forecast
+           .groupby('time_months', as_index=False)
+           .agg(mean_pred = ('predicted',   'mean'),
+                q10       = ('predicted',   lambda x: np.percentile(x, 10)),
+                q90       = ('predicted',   lambda x: np.percentile(x, 90)),
+                mean_lo   = ('lower_bound', 'mean'),
+                mean_hi   = ('upper_bound', 'mean')))
+    t_yr = pop['time_months'] / 12
+
+    # Fig 1 — Population mean trajectory
+    fig, ax = plt.subplots(figsize=(5.5, 3.8))
+    ax.fill_between(t_yr, pop['q10'], pop['q90'],
+                    color=C_BLUE, alpha=0.12, label='10th–90th pctile')
+    ax.fill_between(t_yr, pop['mean_lo'], pop['mean_hi'],
+                    color=C_BLUE, alpha=0.28, label='Mean 90% CI')
+    ax.plot(t_yr, pop['mean_pred'], color=C_BLUE, lw=2, label='Population mean')
+    ax.set_xlabel('Time from baseline (years)')
+    ax.set_ylabel('Predicted BAG (years)')
+    ax.set_title(f'ACCORD 8-Year BAG Forecast — Population Trajectory\n'
+                 f'(n = {n_subj} subjects, {n_folds_found}-fold ensemble)')
+    ax.set_xticks(tps_yr); ax.set_xticklabels(xlabels)
+    ax.legend(frameon=False, loc='upper left', fontsize=8)
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, 'accord_forecast_fig1_population.png')
+
+    # Fig 2 — Sex-stratified trajectories
+    if sex_map is not None and forecast['Sex'].notna().any():
+        fig, ax = plt.subplots(figsize=(5.5, 3.8))
+        for sex_val, label, color in [(0, 'Male', C_BLUE), (1, 'Female', C_RED)]:
+            sub = forecast[forecast['Sex'] == sex_val]
+            if sub.empty:
+                continue
+            g = (sub.groupby('time_months', as_index=False)
+                    .agg(mean_pred = ('predicted',   'mean'),
+                         mean_lo   = ('lower_bound', 'mean'),
+                         mean_hi   = ('upper_bound', 'mean')))
+            t = g['time_months'] / 12
+            ax.fill_between(t, g['mean_lo'], g['mean_hi'], color=color, alpha=0.2)
+            ax.plot(t, g['mean_pred'], color=color, lw=2,
+                    label=f'{label} (n={sub["PTID"].nunique()})')
+        ax.set_xlabel('Time from baseline (years)')
+        ax.set_ylabel('Predicted BAG (years)')
+        ax.set_title('ACCORD 8-Year Forecast: Sex-Stratified')
+        ax.set_xticks(tps_yr); ax.set_xticklabels(xlabels)
+        ax.legend(frameon=False)
+        despine(ax)
+        fig.tight_layout()
+        savefig(fig, 'accord_forecast_fig2_sex_stratified.png')
+
+    # Fig 3 — Individual spaghetti (random sample) + population mean
+    rng = np.random.RandomState(0)
+    sample_ptids = rng.choice(forecast['PTID'].unique(),
+                              size=min(args.n_traj * 4, n_subj), replace=False)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for ptid in sample_ptids:
+        s = forecast[forecast['PTID'] == ptid].sort_values('time_months')
+        ax.plot(s['time_months'] / 12, s['predicted'],
+                color=C_BLUE, lw=0.4, alpha=0.25)
+    ax.plot(t_yr, pop['mean_pred'], color=C_BLACK, lw=2,
+            label=f'Population mean (n={n_subj})', zorder=5)
+    ax.set_xlabel('Time from baseline (years)')
+    ax.set_ylabel('Predicted BAG (years)')
+    ax.set_title(f'ACCORD 8-Year Forecast: Individual Trajectories\n'
+                 f'({len(sample_ptids)} of {n_subj} subjects shown)')
+    ax.set_xticks(tps_yr); ax.set_xticklabels(xlabels)
+    ax.legend(frameon=False)
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, 'accord_forecast_fig3_individual.png')
+
+    # Fig 4 — Distribution over time (violin)
+    data_by_tp = [forecast[forecast['time_months'] == tp]['predicted'].values
+                  for tp in tps]
+    fig, ax = plt.subplots(figsize=(7.5, 3.8))
+    parts = ax.violinplot(data_by_tp, positions=tps_yr, widths=0.5,
+                          showmedians=True, showextrema=False)
+    for pc in parts['bodies']:
+        pc.set_facecolor(C_BLUE)
+        pc.set_alpha(0.55)
+    parts['cmedians'].set_color(C_RED)
+    parts['cmedians'].set_linewidth(1.5)
+    ax.set_xlabel('Time from baseline (years)')
+    ax.set_ylabel('Predicted BAG (years)')
+    ax.set_title('ACCORD Forecast: Predicted BAG Distribution Over Time')
+    ax.set_xticks(tps_yr); ax.set_xticklabels(xlabels)
+    despine(ax)
+    fig.tight_layout()
+    savefig(fig, 'accord_forecast_fig4_distribution.png')
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+print('\n' + '=' * 62)
+print(f'  Outputs written to: {args.output_dir}/')
+print('=' * 62)
