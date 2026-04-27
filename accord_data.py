@@ -190,6 +190,51 @@ for ptid, subject in data.groupby('PTID', sort=False):
 
 samples_df = pd.DataFrame(samples)
 
+# ---------------------------------------------------------------------------
+# Quality assurance — accord_samples_df must be NaN-free
+# ---------------------------------------------------------------------------
+qa_failed = False
+
+# 1. DataFrame-level NaN check (catches NaN in PTID column)
+nan_counts = samples_df.isna().sum()
+if nan_counts.any():
+    print(f'QA FAIL — NaN values in samples_df columns:')
+    for col, n in nan_counts[nan_counts > 0].items():
+        print(f'  {col}: {n} NaNs')
+    qa_failed = True
+else:
+    print('QA pass — no NaN in samples_df columns (PTID/X/Y)')
+
+# 2. Check for 'nan' inside the stringified X feature vectors
+x_nan_mask = samples_df['X'].str.contains(r'\bnan\b', case=False, regex=True)
+if x_nan_mask.any():
+    print(f'QA FAIL — {x_nan_mask.sum()} X vectors contain NaN values:')
+    bad = samples_df[x_nan_mask][['PTID', 'X']].head(5)
+    for _, row in bad.iterrows():
+        print(f'  PTID={row["PTID"]}  X={row["X"][:120]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside X feature vectors')
+
+# 3. Check for 'nan' inside the stringified Y target vectors
+y_nan_mask = samples_df['Y'].str.contains(r'\bnan\b', case=False, regex=True)
+if y_nan_mask.any():
+    print(f'QA FAIL — {y_nan_mask.sum()} Y vectors contain NaN values:')
+    bad = samples_df[y_nan_mask][['PTID', 'Y']].head(5)
+    for _, row in bad.iterrows():
+        print(f'  PTID={row["PTID"]}  Y={row["Y"]}')
+    qa_failed = True
+else:
+    print('QA pass — no NaN inside Y target vectors')
+
+if qa_failed:
+    raise ValueError(
+        'accord_samples_df failed NaN quality assurance — '
+        'fix upstream NaN sources before saving.'
+    )
+print('QA complete — accord_samples_df is clean.')
+# ---------------------------------------------------------------------------
+
 accord_samples_path = os.path.join(data_dir, 'subjectsamples_bag_accord.csv')
 samples_df.to_csv(accord_samples_path, index=False)
 print(f'Saved: {accord_samples_path}')
