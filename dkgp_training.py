@@ -15,6 +15,9 @@ import json
 import time
 import logging
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='Temporal Deep Kernel Single Task GP model for a Biomarker')
 ## Production Parameters
@@ -244,6 +247,7 @@ deepkernelmodel.set_train_data(inputs=train_x, targets=train_y, strict=False)
 
 # Training loop
 iterations = 200
+train_losses = []
 logger.info(f"Training for {iterations} iterations...")
 with gpytorch.settings.cholesky_jitter(1e-3):
     for i in range(iterations):
@@ -254,8 +258,23 @@ with gpytorch.settings.cholesky_jitter(1e-3):
         torch.nn.utils.clip_grad_norm_(deepkernelmodel.parameters(), max_norm=1.0)
         optimizer.step()
 
+        train_losses.append(loss.item())
         if (i+1) % 50 == 0:
             logger.info(f'Iteration {i+1}/{iterations} - Loss: {loss.item():.3f}')
+
+# Plot and save training loss curve
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(train_losses, lw=1.2, color='steelblue', label='Train loss (NLL)')
+ax.set_xlabel('Iteration', fontsize=12)
+ax.set_ylabel('Negative MLL', fontsize=12)
+ax.set_title(f'Training Loss — {biomarker_name} fold {fold}', fontsize=13)
+ax.legend(fontsize=11)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+loss_plot_path = os.path.join(output_dir, f'train_loss_{biomarker_name}_{biomarker_index}_{fold}.png')
+fig.savefig(loss_plot_path, dpi=150)
+plt.close(fig)
+logger.info(f'Training loss plot saved to {loss_plot_path}')
 
 # Evaluation
 deepkernelmodel.eval()
