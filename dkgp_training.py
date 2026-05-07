@@ -610,10 +610,14 @@ future_timepoints = [0, 12, 24, 36, 48, 60, 72, 84, 96]
 # is covered and each subject contributes exactly one baseline feature vector.
 accord_baseline_csv = './data/subjectsamples_bag_accord_baseline.csv'
 accord_baseline_data = pd.read_csv(accord_baseline_csv)
-logger.info(f"Loaded ACCORD baseline data: {accord_baseline_data['PTID'].nunique()} subjects "
+
+for c in accord_baseline_data.columns: 
+    print(c)
+
+logger.info(f"Loaded ACCORD baseline data: {accord_baseline_data['MRID'].nunique()} subjects "
             f"from {accord_baseline_csv}")
 
-accord_forecast_ptids = accord_baseline_data['PTID'].tolist()
+accord_forecast_ptids = accord_baseline_data['MRID'].tolist()
 accord_baseline_features = []
 for x_str in accord_baseline_data['X']:
     a = x_str.strip('][').split(', ')
